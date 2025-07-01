@@ -59,3 +59,12 @@ isort src tests
 ruff src tests
 mypy src
 ```
+
+8. Secrets
+
+We should NOT commit any API keys into github. This project uses a simple tool dotenv to make that possible:
+
+- make a duplicate of `.env.example` and call that `.env`
+- do not change anything in `.env.example` itself
+- ask for API keys and URLs in the team or just look it up in azure
+- `.env` is added into `.gitignore` so you never commit it

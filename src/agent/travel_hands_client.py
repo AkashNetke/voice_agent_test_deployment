@@ -7,25 +7,25 @@ from datetime import datetime
 
 class TravelHandsClient:
     """Client for interacting with Travel Hands VIP Service API."""
-    
+
     def __init__(self, base_url: str = "https://travelhands-test-e5a3h9akcfevhwc4.uksouth-01.azurewebsites.net"):
         """Initialize the client with base URL and auth token."""
         self.base_url = base_url.rstrip('/')
-        self.auth_token = "eyJhbGciOiJIUzUxMiJ9.eyJzdWIiOiJha2FzaGJuZXRrZUBnbWFpbC5jb20iLCJuYW1lIjoia2lhIiwiaWQiOjM1Mywicm9sZSI6IlJPTEVfVklQIiwiZXhwIjoxNzUzMDUxNTg0fQ.GqjYGgjDOzgsHqedsrfXnfIXCuKLH7sBUBL9M6VYOl3X6Bm2p_OsYS_1cg3fMj3Os-b1c9ohLr6zjF4T5z2PRw"
+        self.auth_token = "<auth>"
         self.headers = {
             "Authorization": f"Bearer {self.auth_token}",
             "Content-Type": "application/json"
         }
         self.logger = logging.getLogger(__name__)
-    
+
     def _handle_error_response(self, response: requests.Response, context: str) -> Dict[str, Any]:
         """
         Handle error responses from the API.
-        
+
         Args:
             response: The response object from requests
             context: Context of the API call for error messaging
-            
+
         Returns:
             A dictionary with error information
         """
@@ -35,7 +35,7 @@ class TravelHandsClient:
             error = error_data.get('error', 'Unknown error')
             message = error_data.get('message', 'No message provided')
             timestamp = error_data.get('timestamp', datetime.now().strftime("%d-%m-%Y %I:%M:%S %p"))
-            
+
             if status == 440 or "session" in message.lower():
                 return {
                     "error": "Session Expired",
@@ -47,7 +47,7 @@ class TravelHandsClient:
                         "original_message": message
                     }
                 }
-            
+
             return {
                 "error": error,
                 "message": message,
@@ -66,23 +66,23 @@ class TravelHandsClient:
                     "context": context
                 }
             }
-    
+
     def get_active_journey(self, user_id: int) -> Dict[str, Any]:
         """
         Get active journey for a specific user.
-        
+
         Args:
             user_id: The ID of the user
-            
+
         Returns:
             Response data from the API
         """
         endpoint = f"/api/vip/activeJourney/{user_id}"
         url = f"{self.base_url}{endpoint}"
-        
+
         try:
             response = requests.get(url, headers=self.headers)
-            
+
             if response.status_code == 200:
                 data = response.json()
                 if not data or (isinstance(data, list) and len(data) == 0):
@@ -91,11 +91,11 @@ class TravelHandsClient:
                         "data": []
                     }
                 return data
-            
+
             error_info = self._handle_error_response(response, f"getting active journey for user {user_id}")
             self.logger.error(f"API Error: {json.dumps(error_info, indent=2)}")
             return error_info
-            
+
         except requests.exceptions.RequestException as e:
             error_info = {
                 "error": "Request Failed",
@@ -106,11 +106,11 @@ class TravelHandsClient:
             }
             self.logger.error(f"Request Error: {json.dumps(error_info, indent=2)}")
             return error_info
-    
+
     def get_volunteers(self, request_data: Dict[str, Any] = None) -> Dict[str, Any]:
         """
         Get available volunteers based on journey details.
-        
+
         Args:
             request_data: The request payload containing:
                 - destinationAddressId: int
@@ -121,13 +121,13 @@ class TravelHandsClient:
                 - pickupAddressId: int
                 - pickupTime: str (format: "HH:mm:ss")
                 - totalTimeForVolunteer: str
-            
+
         Returns:
             Response data from the API containing available volunteers
         """
         endpoint = "/api/vip/getVolunteers"
         url = f"{self.base_url}{endpoint}"
-        
+
         # If no request data provided, use default test values
         if not request_data:
             request_data = {
@@ -140,10 +140,10 @@ class TravelHandsClient:
                 "pickupTime": "10:00:00",
                 "totalTimeForVolunteer": "upto 1 hour"
             }
-        
+
         try:
             response = requests.post(url, headers=self.headers, json=request_data)
-            
+
             if response.status_code == 200:
                 data = response.json()
                 if not data or (isinstance(data, list) and len(data) == 0):
@@ -155,11 +155,11 @@ class TravelHandsClient:
                     "message": f"Found {len(data) if isinstance(data, list) else 1} available volunteer(s).",
                     "data": data
                 }
-            
+
             error_info = self._handle_error_response(response, "getting available volunteers")
             self.logger.error(f"API Error: {json.dumps(error_info, indent=2)}")
             return error_info
-            
+
         except requests.exceptions.RequestException as e:
             error_info = {
                 "error": "Request Failed",
@@ -170,11 +170,11 @@ class TravelHandsClient:
             }
             self.logger.error(f"Request Error: {json.dumps(error_info, indent=2)}")
             return error_info
-    
+
     def _format_postcode(self, postcode: str) -> str:
         """Format postcode according to UK format with one space before the last 3 characters.
         Removes all spaces, periods, and adds a single space before the last 3 characters.
-        Examples: 
+        Examples:
         - "E.1.2.3.g.h" becomes "E123 GH"
         - "SW1.A1.AA" becomes "SW1A 1AA"
         - "M.1.1.A.E" becomes "M11 AE"
@@ -182,7 +182,7 @@ class TravelHandsClient:
         """
         # Remove ALL spaces, periods and convert to uppercase
         postcode = ''.join(c for c in postcode if not c.isspace() and c != '.').upper()
-        
+
         if len(postcode) >= 3:
             # Insert a single space before the last 3 characters
             formatted = f"{postcode[:-3]} {postcode[-3:]}"
@@ -194,10 +194,10 @@ class TravelHandsClient:
         """Register a new VIP user"""
         # Clean the email by removing spaces and converting to lowercase
         email = ''.join(email.split()).lower()
-        
+
         # Format the postcode
         post_code = self._format_postcode(post_code)
-        
+
         # Log the cleaned data before sending
         logging.info("=" * 80)
         logging.info("TRAVEL HANDS VIP REGISTRATION REQUEST")
@@ -208,7 +208,7 @@ class TravelHandsClient:
         logging.info(f"  Email: {email}")
         logging.info(f"  Gender: {gender}")
         logging.info(f"  Postcode (formatted): {post_code}")
-        
+
         url = f"{self.base_url}/api/vip/registration"
         payload = {
             "name": name,
@@ -221,7 +221,7 @@ class TravelHandsClient:
             "onboarded": True,
             "password": "TempPass@123"
         }
-        
+
         try:
             # Log the request details
             logging.info("\nRequest Details:")
@@ -231,9 +231,9 @@ class TravelHandsClient:
                 logging.info(f"    {key}: {value}")
             logging.info("  Payload:")
             logging.info(f"    {json.dumps(payload, indent=2)}")
-            
+
             response = requests.post(url, json=payload, headers=self.headers)
-            
+
             # Log the raw response
             logging.info("\nResponse Details:")
             logging.info(f"  Status Code: {response.status_code}")
@@ -247,7 +247,7 @@ class TravelHandsClient:
             except:
                 logging.info(f"    {response.text}")
             logging.info("=" * 80)
-            
+
             try:
                 response_data = response.json()
             except json.JSONDecodeError:
@@ -259,14 +259,14 @@ class TravelHandsClient:
                         "content": response.text
                     }
                 }
-            
+
             if response.status_code == 200:
                 return response_data
             else:
                 error_info = self._handle_error_response(response, "registering VIP user")
                 self.logger.error(f"API Error: {json.dumps(error_info, indent=2)}")
                 return error_info
-            
+
         except requests.exceptions.RequestException as e:
             error_message = str(e)
             logging.error(f"Request failed: {error_message}")
@@ -280,4 +280,4 @@ class TravelHandsClient:
             return {
                 "error": "Unexpected Error",
                 "message": f"An unexpected error occurred: {error_message}"
-            } 
+            }

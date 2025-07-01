@@ -16,6 +16,9 @@ dependencies = [
     "uvicorn[standard]",
     "langchain",
     "websockets",
+    "langchain-openai",
+    "python-dotenv",
+    "azure-cognitiveservices-speech"
 ]
 
 [project.optional-dependencies]

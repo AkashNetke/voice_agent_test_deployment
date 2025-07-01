@@ -160,3 +160,5 @@ checkpoints/
 
 # Ignore node_modules (if using JS for frontend)
 node_modules/
+
+.env
