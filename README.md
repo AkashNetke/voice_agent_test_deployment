@@ -37,7 +37,7 @@ pip install -e .[dev]
 4. Run the service
 
 ```sh
-uvicorn src.main:app --reload
+uvicorn src.server:app --reload
 ```
 
 5. Run tests
