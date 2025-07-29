@@ -11,7 +11,7 @@ class TravelHandsClient:
     def __init__(self, base_url: str = "https://travelhands-test-e5a3h9akcfevhwc4.uksouth-01.azurewebsites.net"):
         """Initialize the client with base URL and auth token."""
         self.base_url = base_url.rstrip('/')
-        self.auth_token = "<auth>"
+        self.auth_token = "eyJhbGciOiJIUzUxMiJ9.eyJzdWIiOiJha2FzaGJuZXRrZUBnbWFpbC5jb20iLCJuYW1lIjoia2lhIiwiaWQiOjM1Mywicm9sZSI6IlJPTEVfVklQIiwiZXhwIjoxNzUzMDUxNTg0fQ.GqjYGgjDOzgsHqedsrfXnfIXCuKLH7sBUBL9M6VYOl3X6Bm2p_OsYS_1cg3fMj3Os-b1c9ohLr6zjF4T5z2PRw"
         self.headers = {
             "Authorization": f"Bearer {self.auth_token}",
             "Content-Type": "application/json"
@@ -195,6 +195,11 @@ class TravelHandsClient:
         # Clean the email by removing spaces and converting to lowercase
         email = ''.join(email.split()).lower()
 
+        # Remove trailing periods from all inputs
+        name = name.rstrip('.')
+        gender = gender.rstrip('.')
+        post_code = post_code.rstrip('.')
+
         # Format the postcode
         post_code = self._format_postcode(post_code)
 
@@ -212,7 +217,7 @@ class TravelHandsClient:
         url = f"{self.base_url}/api/vip/registration"
         payload = {
             "name": name,
-            "phoneNumber": phone_number,
+            "mobileNumber": phone_number,
             "email": email,
             "gender": gender,
             "postCode": post_code,
@@ -250,6 +255,13 @@ class TravelHandsClient:
 
             try:
                 response_data = response.json()
+                logging.info("\nParsed API Response Data:")
+                logging.info("-" * 40)
+                logging.info(f"Response Status Code: {response.status_code}")
+                logging.info(f"Response Data Type: {type(response_data)}")
+                logging.info(f"Response Data Keys: {response_data.keys() if isinstance(response_data, dict) else 'Not a dictionary'}")
+                logging.info(f"Full Response Data: {json.dumps(response_data, indent=2)}")
+                logging.info("-" * 40)
             except json.JSONDecodeError:
                 return {
                     "error": "Invalid Response",
@@ -260,7 +272,9 @@ class TravelHandsClient:
                     }
                 }
 
-            if response.status_code == 200:
+            # Handle response based on status code range
+            if 200 <= response.status_code < 300:  # All 2xx status codes indicate success
+                response_data['status'] = response.status_code  # Include actual status code
                 return response_data
             else:
                 error_info = self._handle_error_response(response, "registering VIP user")
