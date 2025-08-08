@@ -1,0 +1,69 @@
+name: Deploy to Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Image tag to deploy (defaults to latest)'
+        required: false
+        default: 'latest'
+
+env:
+  # Azure Container Registry name
+  REGISTRY_NAME: travelhands-ecaweffuhmhcgyh5
+  # Azure Container Apps name for production
+  CONTAINER_APP_NAME: voice-agent-prod
+  # Azure Resource Group name for production
+  RESOURCE_GROUP: th-voice-agent-prod
+  # Container image name
+  IMAGE_NAME: voice-agent
+
+jobs:
+  deploy-prod:
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Validate environment variables
+      run: |
+        required_secrets=(
+          "AZURE_CREDENTIALS"
+          "AZURE_OPENAI_ENDPOINT_PROD"
+          "AZURE_OPENAI_API_KEY_PROD"
+          "AZURE_SPEECH_REGION_PROD"
+          "AZURE_OPENAI_API_VERSION_PROD"
+          "AZURE_OPENAI_DEPLOYMENT_NAME_PROD"
+        )
+
+        for secret in "${required_secrets[@]}"; do
+          if [ -z "${{ secrets[secret] }}" ]; then
+            echo "::error::Required secret $secret is not set"
+            exit 1
+          fi
+        done
+        echo "All required production secrets are set"
+
+    - name: Log in to Azure
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Log in to Azure Container Registry
+      run: az acr login --name ${{ env.REGISTRY_NAME }}
+
+    - name: Deploy to Azure Container Apps (Production)
+      uses: azure/container-apps-deploy-action@v1
+      with:
+        acrName: ${{ env.REGISTRY_NAME }}
+        containerAppName: ${{ env.CONTAINER_APP_NAME }}
+        resourceGroup: ${{ env.RESOURCE_GROUP }}
+        imageToDeploy: ${{ env.REGISTRY_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.event.inputs.image_tag }}
+        environmentVariables: |
+          AZURE_OPENAI_ENDPOINT=${{ secrets.AZURE_OPENAI_ENDPOINT_PROD }}
+          AZURE_OPENAI_API_KEY=${{ secrets.AZURE_OPENAI_API_KEY_PROD }}
+          AZURE_SPEECH_REGION=${{ secrets.AZURE_SPEECH_REGION_PROD }}
+          AZURE_OPENAI_API_VERSION=${{ secrets.AZURE_OPENAI_API_VERSION_PROD }}
+          AZURE_OPENAI_DEPLOYMENT_NAME=${{ secrets.AZURE_OPENAI_DEPLOYMENT_NAME_PROD }}

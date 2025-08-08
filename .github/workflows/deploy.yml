@@ -1,0 +1,75 @@
+name: Build and Deploy to Azure Container Apps
+
+on:
+  push:
+    branches: [ main ]
+
+env:
+  # Azure Container Registry name (replace with your ACR name)
+  REGISTRY_NAME: travelhands-ecaweffuhmhcgyh5
+  # Azure Container Apps name (replace with your container app name)
+  CONTAINER_APP_NAME: voice-agent
+  # Azure Resource Group name
+  RESOURCE_GROUP: th-voice-agent
+  # Container image name
+  IMAGE_NAME: voice-agent
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Validate environment variables
+      run: |
+        required_secrets=(
+          "AZURE_CREDENTIALS"
+          "AZURE_OPENAI_ENDPOINT"
+          "AZURE_OPENAI_API_KEY"
+          "AZURE_SPEECH_REGION"
+          "AZURE_OPENAI_API_VERSION"
+          "AZURE_OPENAI_DEPLOYMENT_NAME"
+        )
+
+        for secret in "${required_secrets[@]}"; do
+          if [ -z "${{ secrets[secret] }}" ]; then
+            echo "::error::Required secret $secret is not set"
+            exit 1
+          fi
+        done
+        echo "All required secrets are set"
+
+    - name: Log in to Azure
+      uses: azure/login@v1
+      with:
+        creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+    - name: Log in to Azure Container Registry
+      run: az acr login --name ${{ env.REGISTRY_NAME }}
+
+    - name: Build and push Docker image
+      run: |
+        # Build the Docker image
+        docker build -t ${{ env.REGISTRY_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }} .
+        docker build -t ${{ env.REGISTRY_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:latest .
+
+        # Push the Docker image to ACR
+        docker push ${{ env.REGISTRY_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}
+        docker push ${{ env.REGISTRY_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:latest
+
+    - name: Deploy to Azure Container Apps
+      uses: azure/container-apps-deploy-action@v1
+      with:
+        acrName: ${{ env.REGISTRY_NAME }}
+        containerAppName: ${{ env.CONTAINER_APP_NAME }}
+        resourceGroup: ${{ env.RESOURCE_GROUP }}
+        imageToDeploy: ${{ env.REGISTRY_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}
+        environmentVariables: |
+          # OpenAI Configuration
+          AZURE_OPENAI_ENDPOINT=${{ secrets.AZURE_OPENAI_ENDPOINT }}
+          AZURE_SPEECH_REGION=${{ secrets.AZURE_SPEECH_REGION }}
+          AZURE_OPENAI_API_KEY=${{ secrets.AZURE_OPENAI_API_KEY }}
+          AZURE_OPENAI_API_VERSION=${{ secrets.AZURE_OPENAI_API_VERSION }}
+          AZURE_OPENAI_DEPLOYMENT_NAME=${{ secrets.AZURE_OPENAI_DEPLOYMENT_NAME }}
