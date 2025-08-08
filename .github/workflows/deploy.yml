@@ -24,21 +24,38 @@ jobs:
 
     - name: Validate environment variables
       run: |
-        required_secrets=(
-          "AZURE_CREDENTIALS"
-          "AZURE_OPENAI_ENDPOINT"
-          "AZURE_OPENAI_API_KEY"
-          "AZURE_SPEECH_REGION"
-          "AZURE_OPENAI_API_VERSION"
-          "AZURE_OPENAI_DEPLOYMENT_NAME"
-        )
+        echo "Validating required secrets..."
 
-        for secret in "${required_secrets[@]}"; do
-          if [ -z "${{ secrets[secret] }}" ]; then
-            echo "::error::Required secret $secret is not set"
-            exit 1
-          fi
-        done
+        if [ -z "${{ secrets.AZURE_CREDENTIALS }}" ]; then
+          echo "::error::Required secret AZURE_CREDENTIALS is not set"
+          exit 1
+        fi
+
+        if [ -z "${{ secrets.AZURE_OPENAI_ENDPOINT }}" ]; then
+          echo "::error::Required secret AZURE_OPENAI_ENDPOINT is not set"
+          exit 1
+        fi
+
+        if [ -z "${{ secrets.AZURE_OPENAI_API_KEY }}" ]; then
+          echo "::error::Required secret AZURE_OPENAI_API_KEY is not set"
+          exit 1
+        fi
+
+        if [ -z "${{ secrets.AZURE_SPEECH_REGION }}" ]; then
+          echo "::error::Required secret AZURE_SPEECH_REGION is not set"
+          exit 1
+        fi
+
+        if [ -z "${{ secrets.AZURE_OPENAI_API_VERSION }}" ]; then
+          echo "::error::Required secret AZURE_OPENAI_API_VERSION is not set"
+          exit 1
+        fi
+
+        if [ -z "${{ secrets.AZURE_OPENAI_DEPLOYMENT_NAME }}" ]; then
+          echo "::error::Required secret AZURE_OPENAI_DEPLOYMENT_NAME is not set"
+          exit 1
+        fi
+
         echo "All required secrets are set"
 
     - name: Log in to Azure
