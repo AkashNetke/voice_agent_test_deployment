@@ -1,4 +1,4 @@
-name: Build and Deploy to Azure Container Apps
+name: Deploy to Test
 
 on:
   push:
