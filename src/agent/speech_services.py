@@ -278,3 +278,63 @@ class SpeechServices:
         text = text.replace("\n\n", "<break time='500ms'/>")
 
         return text
+
+    def text_to_speech_streamlit(self, text, message_type="general"):
+        """
+        Streamlit-compatible text-to-speech that uses file output and system playback.
+        This works around Streamlit's audio output limitations.
+        """
+        try:
+            import os
+            import subprocess
+            import tempfile
+            import time
+            
+            # Create a temporary audio file
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_file:
+                temp_filename = temp_file.name
+            
+            # Create audio file output config
+            audio_config = speechsdk.audio.AudioOutputConfig(filename=temp_filename)
+            speech_synthesizer = speechsdk.SpeechSynthesizer(
+                speech_config=self.speech_config,
+                audio_config=audio_config
+            )
+            
+            # Synthesize speech to file
+            result = speech_synthesizer.speak_text_async(text).get()
+            
+            if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
+                # Check if file was created and has content
+                if os.path.exists(temp_filename) and os.path.getsize(temp_filename) > 0:
+                    try:
+                        # Play the audio file using system command
+                        subprocess.run(['afplay', temp_filename], timeout=30, check=True)
+                        
+                        # Clean up the temporary file after a short delay
+                        time.sleep(0.5)
+                        try:
+                            os.unlink(temp_filename)
+                        except:
+                            pass  # Don't fail if cleanup doesn't work
+                            
+                        return "Speech synthesis completed successfully."
+                    except subprocess.TimeoutExpired:
+                        return "Speech synthesis timeout - audio file may be too long."
+                    except subprocess.CalledProcessError as e:
+                        return f"Audio playback failed: {e}"
+                    except Exception as e:
+                        return f"Audio playback error: {e}"
+                else:
+                    return "Audio file creation failed - file is empty or doesn't exist."
+            else:
+                error_msg = "Speech synthesis failed"
+                if result.reason == speechsdk.ResultReason.Canceled:
+                    cancellation_details = result.cancellation_details
+                    error_msg += f": {cancellation_details.reason}"
+                    if cancellation_details.error_details:
+                        error_msg += f" - {cancellation_details.error_details}"
+                return error_msg
+                
+        except Exception as e:
+            return f"Speech synthesis error: {str(e)}"

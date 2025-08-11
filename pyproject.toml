@@ -1,6 +1,28 @@
+[tool.poetry]
+name = "voice-agent"
+version = "0.1.0"
+description = "Voice Agent for Journey Booking"
+authors = ["Your Name <you@example.com>"]
+readme = "README.md"
+packages = [{include = "src"}]
+
+[tool.poetry.dependencies]
+python = "^3.8"
+azure-cognitiveservices-speech = "^1.32.0"
+azure-identity = "^1.13.0"
+python-dotenv = "^1.0.0"
+langchain = "^0.2.6"
+langchain-openai = "^0.1.9"
+streamlit = "^1.25.0"
+requests = "^2.31.0"
+python-dateutil = "^2.8.2"
+fastapi = "^0.111.0"
+uvicorn = "^0.30.1"
+pydantic = "^2.8.2"
+
 [build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
 
 [project]
 name = "voice-agent"
@@ -17,7 +39,10 @@ dependencies = [
     "langchain-openai",
     "python-dotenv",
     "azure-cognitiveservices-speech",
-    "ffmpeg"
+    "ffmpeg",
+    "streamlit",
+    "requests",
+    "python-dateutil"
 ]
 
 [project.optional-dependencies]
