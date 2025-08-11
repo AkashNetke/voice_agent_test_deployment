@@ -68,3 +68,7 @@ We should NOT commit any API keys into github. This project uses a simple tool d
 - do not change anything in `.env.example` itself
 - ask for API keys and URLs in the team or just look it up in azure
 - `.env` is added into `.gitignore` so you never commit it
+
+9. Sample Requests
+
+Sample requests are in `sample-requests.http` this can be run from within vscode when running the local server. (Or by changing the base URL to run in the azure)
