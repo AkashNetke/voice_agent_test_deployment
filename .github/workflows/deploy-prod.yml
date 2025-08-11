@@ -77,7 +77,7 @@ jobs:
         acrName: ${{ env.REGISTRY_NAME }}
         containerAppName: ${{ env.CONTAINER_APP_NAME }}
         resourceGroup: ${{ env.RESOURCE_GROUP }}
-        imageToDeploy: ${{ env.REGISTRY_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.event.inputs.image_tag }}
+        imageToDeploy: ${{ env.REGISTRY_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:latest
         environmentVariables: |
           AZURE_OPENAI_ENDPOINT=${{ secrets.AZURE_OPENAI_ENDPOINT_PROD }}
           AZURE_OPENAI_API_KEY=${{ secrets.AZURE_OPENAI_API_KEY_PROD }}
