@@ -8,7 +8,7 @@ env:
   # Azure Container Registry name (replace with your ACR name)
   REGISTRY_NAME: travelhands-ecaweffuhmhcgyh5
   # Azure Container Apps name (replace with your container app name)
-  CONTAINER_APP_NAME: voice-agent
+  CONTAINER_APP_NAME: voice-agent-test
   # Azure Resource Group name
   RESOURCE_GROUP: th-voice-agent
   # Container image name
