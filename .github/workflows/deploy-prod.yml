@@ -72,17 +72,14 @@ jobs:
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-    - name: Deploy to Azure Container Apps (Production)
-      uses: azure/container-apps-deploy-action@v1
-      with:
-        acrName: ${{ env.REGISTRY_NAME }}
-        containerAppName: ${{ env.CONTAINER_APP_NAME }}
-        resourceGroup: ${{ env.RESOURCE_GROUP }}
-        imageToDeploy: ${{ env.REGISTRY_URL }}/${{ env.IMAGE_NAME }}:latest
-        containerAppEnvironment: ${{ env.CONTAINER_APP_ENV }}
-        environmentVariables: |
-          AZURE_OPENAI_ENDPOINT=${{ secrets.AZURE_OPENAI_ENDPOINT_PROD }}
-          AZURE_OPENAI_API_KEY=${{ secrets.AZURE_OPENAI_API_KEY_PROD }}
-          AZURE_SPEECH_REGION=${{ secrets.AZURE_SPEECH_REGION_PROD }}
-          AZURE_OPENAI_API_VERSION=${{ secrets.AZURE_OPENAI_API_VERSION_PROD }}
-          AZURE_OPENAI_DEPLOYMENT_NAME=${{ secrets.AZURE_OPENAI_DEPLOYMENT_NAME_PROD }}
+    - name: Deploy to Azure Container Apps
+      run: |
+        az containerapp update \
+          --name ${{ env.CONTAINER_APP_NAME }} \
+          --resource-group ${{ env.RESOURCE_GROUP }} \
+          --image ${{ env.REGISTRY_URL }}/${{ env.IMAGE_NAME }}:latest \
+          --replace-env-vars "AZURE_OPENAI_ENDPOINT=${{ secrets.AZURE_OPENAI_ENDPOINT_PROD }}" \
+            "AZURE_SPEECH_REGION=${{ secrets.AZURE_SPEECH_REGION_PROD }}" \
+            "AZURE_OPENAI_API_KEY=${{ secrets.AZURE_OPENAI_API_KEY_PROD }}" \
+            "AZURE_OPENAI_API_VERSION=${{ secrets.AZURE_OPENAI_API_VERSION_PROD }}" \
+            "AZURE_OPENAI_DEPLOYMENT_NAME=${{ secrets.AZURE_OPENAI_DEPLOYMENT_NAME_PROD }}"
