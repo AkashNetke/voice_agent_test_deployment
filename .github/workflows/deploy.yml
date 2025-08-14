@@ -7,8 +7,12 @@ on:
 env:
   # Azure Container Registry name (replace with your ACR name)
   REGISTRY_NAME: travelhands-ecaweffuhmhcgyh5
+  # Registry URL
+  REGISTRY_URL: travelhands-ecaweffuhmhcgyh5.azurecr.io
   # Azure Container Apps name (replace with your container app name)
   CONTAINER_APP_NAME: voice-agent-test
+  # Container App ENV
+  CONTAINER_APP_ENV: managedEnvironment-thvoiceagent-8a5e
   # Azure Resource Group name
   RESOURCE_GROUP: th-voice-agent
   # Container image name
@@ -59,24 +63,28 @@ jobs:
         echo "All required secrets are set"
 
     - name: Log in to Azure
-      uses: azure/login@v1
+      uses: azure/login@v2
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
 
     - name: Log in to Azure Container Registry
-      run: az acr login --name ${{ env.REGISTRY_NAME }}
+      uses: azure/docker-login@v1
+      with:
+        login-server: ${{ env.REGISTRY_URL }}
+        username: ${{ secrets.REGISTRY_USERNAME }}
+        password: ${{ secrets.REGISTRY_PASSWORD }}
 
     - name: Build and push Docker image
       run: |
         # Build the Docker image
-        docker build -t ${{ env.REGISTRY_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }} .
+        docker build -t ${{ env.REGISTRY_URL }}/${{ env.IMAGE_NAME }}:${{ github.sha }} .
 
         # Tag the built image with 'latest'
-        docker tag ${{ env.REGISTRY_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }} ${{ env.REGISTRY_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:latest
+        docker tag ${{ env.REGISTRY_URL }}/${{ env.IMAGE_NAME }}:${{ github.sha }} ${{ env.REGISTRY_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:latest
 
         # Push latest & Github SHA tags to ACR
-        docker push ${{ env.REGISTRY_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}
-        docker push ${{ env.REGISTRY_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:latest
+        docker push ${{ env.REGISTRY_URL }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+        docker push ${{ env.REGISTRY_URL }}/${{ env.IMAGE_NAME }}:latest
 
     - name: Deploy to Azure Container Apps
       uses: azure/container-apps-deploy-action@v1
@@ -84,7 +92,8 @@ jobs:
         acrName: ${{ env.REGISTRY_NAME }}
         containerAppName: ${{ env.CONTAINER_APP_NAME }}
         resourceGroup: ${{ env.RESOURCE_GROUP }}
-        imageToDeploy: ${{ env.REGISTRY_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:latest
+        imageToDeploy: ${{ env.REGISTRY_URL }}/${{ env.IMAGE_NAME }}:latest
+        containerAppEnvironment: ${{ env.CONTAINER_APP_ENV }}
         environmentVariables: |
           # OpenAI Configuration
           AZURE_OPENAI_ENDPOINT=${{ secrets.AZURE_OPENAI_ENDPOINT }}
