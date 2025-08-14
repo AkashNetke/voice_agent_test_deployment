@@ -11,8 +11,12 @@ on:
 env:
   # Azure Container Registry name
   REGISTRY_NAME: travelhands-ecaweffuhmhcgyh5
+  # Registry URL
+  REGISTRY_URL: travelhands-ecaweffuhmhcgyh5.azurecr.io
   # Azure Container Apps name for production
   CONTAINER_APP_NAME: voice-agent-prod
+  # Container App ENV
+  CONTAINER_APP_ENV: todo
   # Azure Resource Group name for production
   RESOURCE_GROUP: th-voice-agent-prod
   # Container image name
@@ -64,12 +68,9 @@ jobs:
         echo "All required secrets are set"
 
     - name: Log in to Azure
-      uses: azure/login@v1
+      uses: azure/login@v2
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
-
-    - name: Log in to Azure Container Registry
-      run: az acr login --name ${{ env.REGISTRY_NAME }}
 
     - name: Deploy to Azure Container Apps (Production)
       uses: azure/container-apps-deploy-action@v1
@@ -77,7 +78,8 @@ jobs:
         acrName: ${{ env.REGISTRY_NAME }}
         containerAppName: ${{ env.CONTAINER_APP_NAME }}
         resourceGroup: ${{ env.RESOURCE_GROUP }}
-        imageToDeploy: ${{ env.REGISTRY_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:latest
+        imageToDeploy: ${{ env.REGISTRY_URL }}/${{ env.IMAGE_NAME }}:latest
+        containerAppEnvironment: ${{ env.CONTAINER_APP_ENV }}
         environmentVariables: |
           AZURE_OPENAI_ENDPOINT=${{ secrets.AZURE_OPENAI_ENDPOINT_PROD }}
           AZURE_OPENAI_API_KEY=${{ secrets.AZURE_OPENAI_API_KEY_PROD }}
