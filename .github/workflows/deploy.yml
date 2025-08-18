@@ -60,6 +60,11 @@ jobs:
           exit 1
         fi
 
+        if [ -z "${{ secrets.OSM_API_KEY }}" ]; then
+          echo "::error::Required secret OSM_API_KEY is not set"
+          exit 1
+        fi
+
         echo "All required secrets are set"
 
     - name: Log in to Azure
@@ -96,4 +101,5 @@ jobs:
             "AZURE_SPEECH_REGION=${{ secrets.AZURE_SPEECH_REGION }}" \
             "AZURE_OPENAI_API_KEY=${{ secrets.AZURE_OPENAI_API_KEY }}" \
             "AZURE_OPENAI_API_VERSION=${{ secrets.AZURE_OPENAI_API_VERSION }}" \
-            "AZURE_OPENAI_DEPLOYMENT_NAME=${{ secrets.AZURE_OPENAI_DEPLOYMENT_NAME }}"
+            "AZURE_OPENAI_DEPLOYMENT_NAME=${{ secrets.AZURE_OPENAI_DEPLOYMENT_NAME }}" \
+            "OSM_API_KEY=${{ secrets.OSM_API_KEY }}"

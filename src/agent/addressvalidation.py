@@ -5,7 +5,7 @@ import requests, urllib.parse
 # Load environment variables
 load_dotenv()
 
-class AddressValidationError(Exception):
+class AddressValidation(Exception):
     def __init__(self):
         """
         Custom exception for address validation errors.
@@ -38,4 +38,6 @@ class AddressValidationError(Exception):
         else:
             print("No results found for the address.")
             return False
-AddressValidationError.validate_address('10 Downilng Street, London, SW1A 2AA')
+
+if __name__ == "__main__":
+    AddressValidation.validate_address('10 Downilng Street, London, SW1A 2AA')
