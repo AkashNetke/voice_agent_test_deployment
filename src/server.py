@@ -67,7 +67,6 @@ def voice_agent(payload: Request = Body(...)):
     Main voice agent endpoint
     Processes voice messages and returns voice responses
     """
-    session_id = None
 
     # Validate message type
     if payload.type not in [MessageType.USER_TEXT_MESSAGE, MessageType.USER_VOICE_MESSAGE]:
@@ -80,13 +79,9 @@ def voice_agent(payload: Request = Body(...)):
 
     # Get or create session
     session = session_manager.get_or_create_session(
-        session_id=getattr(payload, 'session_id', None),
         user_id=payload.user_id,
         user_name=payload.user_name
     )
-    session_id = session.session_id
-
-    logger.info(f"Using session {session_id} for user {payload.user_id}")
 
     # Convert input to text based on message type
     if payload.type == MessageType.USER_TEXT_MESSAGE:

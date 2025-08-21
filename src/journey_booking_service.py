@@ -73,7 +73,6 @@ class JourneyBookingService:
             session.journey_step = "destination"
             session.greeting_shown = True
 
-            logger.info(f"Initialized session {session.session_id} with greeting")
             return greeting_message
 
         # Return current step information if already initialized
@@ -97,7 +96,6 @@ class JourneyBookingService:
             logger.info("=" * 80)
             logger.info("JOURNEY BOOKING - USER INPUT RECEIVED")
             logger.info("=" * 80)
-            logger.info(f"Session: {session.session_id}")
             logger.info(f"Current step: {session.journey_step}")
             logger.info(f"Raw input: {user_input}")
 
