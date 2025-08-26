@@ -12,30 +12,23 @@ from datetime import datetime
 BASE_URL = "http://localhost:8000"
 
 def test_chat_api():
-    """Interactive test of the chat API."""
+    """Test of the chat API with predefined values."""
     print("=" * 60)
     print("🎯 Voice Agent Chat API Tester")
     print("=" * 60)
     print("This script will help you test the chat functionality.")
     print()
     
-    # Get user input
-    user_id = input("Enter a user ID (or press Enter for 'test-user-123'): ").strip()
-    if not user_id:
-        user_id = "test-user-123"
-    
-    user_name = input("Enter a user name (or press Enter for 'Test User'): ").strip()
-    if not user_name:
-        user_name = "Test User"
+    # Use predefined test values
+    user_id = "test-user-123"
+    user_name = "Test User"
     
     print(f"\n✅ Using user: {user_name} ({user_id})")
     print()
     
     # Test 1: Send a message
     print("1️⃣ Testing message sending...")
-    message = input("Enter your message: ").strip()
-    if not message:
-        message = "Hello! This is a test message."
+    message = "Hello! This is a test message."
     
     response = send_message(user_id, user_name, message)
     if response:
@@ -43,9 +36,7 @@ def test_chat_api():
     
     # Test 2: Send another message (should use same session)
     print("\n2️⃣ Testing session persistence...")
-    message2 = input("Enter another message (or press Enter for default): ").strip()
-    if not message2:
-        message2 = "Can you remember our previous conversation?"
+    message2 = "Can you remember our previous conversation?"
     
     response2 = send_message(user_id, user_name, message2)
     if response2:

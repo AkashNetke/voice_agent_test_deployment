@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 # Add src to path so we can import our modules
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
-from services.session_service import get_session_service
+from services.session_service import get_chat_history_service
 from agent.enhanced_agent import get_enhanced_agent
 
 
@@ -27,7 +27,7 @@ def test_conversation_context_retrieval():
     try:
         # Initialize services
         print("Initializing services...")
-        session_service = get_session_service()
+        session_service = get_chat_history_service()
         enhanced_agent = get_enhanced_agent()
         print("✅ Services initialized successfully!")
         

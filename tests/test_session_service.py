@@ -12,8 +12,8 @@ from datetime import datetime, timezone
 # Add src to path so we can import our modules
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
-from services.session_service import get_session_service
-from database.models import ChatSession, ChatMessage
+from services.session_service import get_chat_history_service
+from database.models import ChatMessage
 
 
 def test_session_service():
@@ -25,7 +25,7 @@ def test_session_service():
     try:
         # Get the session service
         print("Initializing Session Management Service...")
-        session_service = get_session_service()
+        session_service = get_chat_history_service()
         print("✅ Session service initialized successfully!")
         
         # Test data
