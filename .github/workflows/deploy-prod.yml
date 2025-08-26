@@ -40,28 +40,28 @@ jobs:
           exit 1
         fi
 
-        if [ -z "${{ secrets.AZURE_OPENAI_ENDPOINT }}" ]; then
-          echo "::error::Required secret AZURE_OPENAI_ENDPOINT is not set"
+        if [ -z "${{ secrets.AZURE_OPENAI_ENDPOINT_PROD }}" ]; then
+          echo "::error::Required secret AZURE_OPENAI_ENDPOINT_PROD is not set"
           exit 1
         fi
 
-        if [ -z "${{ secrets.AZURE_OPENAI_API_KEY }}" ]; then
-          echo "::error::Required secret AZURE_OPENAI_API_KEY is not set"
+        if [ -z "${{ secrets.AZURE_OPENAI_API_KEY_PROD }}" ]; then
+          echo "::error::Required secret AZURE_OPENAI_API_KEY_PROD is not set"
           exit 1
         fi
 
-        if [ -z "${{ secrets.AZURE_SPEECH_REGION }}" ]; then
-          echo "::error::Required secret AZURE_SPEECH_REGION is not set"
+        if [ -z "${{ secrets.AZURE_SPEECH_REGION_PROD }}" ]; then
+          echo "::error::Required secret AZURE_SPEECH_REGION_PROD is not set"
           exit 1
         fi
 
-        if [ -z "${{ secrets.AZURE_OPENAI_API_VERSION }}" ]; then
-          echo "::error::Required secret AZURE_OPENAI_API_VERSION is not set"
+        if [ -z "${{ secrets.AZURE_OPENAI_API_VERSION_PROD }}" ]; then
+          echo "::error::Required secret AZURE_OPENAI_API_VERSION_PROD is not set"
           exit 1
         fi
 
-        if [ -z "${{ secrets.AZURE_OPENAI_DEPLOYMENT_NAME }}" ]; then
-          echo "::error::Required secret AZURE_OPENAI_DEPLOYMENT_NAME is not set"
+        if [ -z "${{ secrets.AZURE_OPENAI_DEPLOYMENT_NAME_PROD }}" ]; then
+          echo "::error::Required secret AZURE_OPENAI_DEPLOYMENT_NAME_PROD is not set"
           exit 1
         fi
 
