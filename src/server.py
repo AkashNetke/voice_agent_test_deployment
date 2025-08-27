@@ -26,9 +26,17 @@ app = FastAPI(
 enhanced_agent = get_enhanced_agent()
 chat_history_service = get_chat_history_service()
 
+@app.get("/")
+def root():
+    return {"message": "Voice Agent API is running."}
+
 @app.post("/message")
+async def voice_agent(payload: MessagePayload = Body(...)):
+    return {"received": payload}
+
+@app.post("/chat")
 async def process_message(payload: MessagePayload = Body(...)):
-    """Process a user message and return AI response."""
+    """Process a user text message and return AI response."""
     try:
         logger.info(f"Processing message for user: {payload.user_id}")
         
@@ -53,28 +61,6 @@ async def process_message(payload: MessagePayload = Body(...)):
             
     except Exception as e:
         logger.error(f"Error processing message: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-# New simplified endpoints for chat history management
-
-@app.post("/chat-history/batch-save")
-async def batch_save_chat_history(
-    user_id: str,
-    messages: List[Dict] = Body(...)
-):
-    """Save multiple chat messages to Cosmos DB in batch."""
-    try:
-        saved_count = chat_history_service.batch_save_messages(
-            user_id=user_id,
-            messages=messages
-        )
-        return {
-            "success": True,
-            "saved_count": saved_count,
-            "message": f"Successfully saved {saved_count} messages to Cosmos DB"
-        }
-    except Exception as e:
-        logger.error(f"Error batch saving messages: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/chat-history/{user_id}")
