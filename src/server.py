@@ -62,6 +62,14 @@ def root():
     }
 
 @app.post("/message", response_model=Response)
+def voice_agent_echo(payload: Request = Body(...)):
+    return Response(
+        type=MessageType.AGENT_VOICE_MESSAGE,
+        audio_data=payload.data,
+        text_data="ok"
+    )
+
+@app.post("/message2", response_model=Response)
 def voice_agent(payload: Request = Body(...)):
     """
     Main voice agent endpoint
