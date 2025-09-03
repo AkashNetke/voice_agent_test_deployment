@@ -4,12 +4,13 @@ version = "0.1.0"
 description = "Voice Agent for Journey Booking"
 authors = ["Your Name <you@example.com>"]
 readme = "README.md"
-packages = [{include = "src"}]
+packages = [
+    { include = "voice_agent", from = "src" }
+]
 
 [tool.poetry.dependencies]
-python = "^3.8"
+python = "^3.9"
 azure-cognitiveservices-speech = "^1.32.0"
-azure-identity = "^1.13.0"
 python-dotenv = "^1.0.0"
 langchain = "^0.2.6"
 langchain-openai = "^0.1.9"
@@ -17,46 +18,20 @@ streamlit = "^1.25.0"
 requests = "^2.31.0"
 python-dateutil = "^2.8.2"
 fastapi = "^0.111.0"
-uvicorn = "^0.30.1"
-pydantic = "^2.8.2"
+uvicorn = {extras = ["standard"], version = "^0.30.1"}
+ffmpeg = "^1.4"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.0.0"
+httpx = "^0.24.0"
+black = "^23.0.0"
+isort = "^5.12.0"
+mypy = "^1.5.0"
+ruff = "^0.0.290"
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
-
-[project]
-name = "voice-agent"
-version = "0.1.0"
-description = "A FastAPI service with LangChain LLM agent and WebSocket chat."
-authors = [
-    { name="Your Name", email="your@email.com" }
-]
-requires-python = ">=3.9"
-dependencies = [
-    "fastapi",
-    "uvicorn[standard]",
-    "langchain",
-    "langchain-openai",
-    "python-dotenv",
-    "azure-cognitiveservices-speech",
-    "ffmpeg",
-    "streamlit",
-    "requests",
-    "python-dateutil"
-]
-
-[project.optional-dependencies]
-dev = [
-    "pytest",
-    "httpx",
-    "black",
-    "isort",
-    "mypy",
-    "ruff"
-]
-
-[tool.setuptools.packages.find]
-where = ["src"]
 
 [tool.black]
 line-length = 88

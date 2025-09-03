@@ -3,8 +3,8 @@ from enum import Enum
 from typing import Optional
 from pydantic import BaseModel
 
-from src.agent.speech_services import SpeechServices
-from src.audio_utils import AudioProcessor
+from voice_agent.agent.speech_services import SpeechServices
+from voice_agent.audio_utils import AudioProcessor
 
 class MessageType(Enum):
     USER_VOICE_MESSAGE = "user-voice-message"

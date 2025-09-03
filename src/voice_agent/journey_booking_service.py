@@ -6,14 +6,14 @@ Adapts the existing Streamlit journey booking logic to work with API sessions
 import logging
 from typing import Dict, Any, Tuple
 from datetime import datetime
-from session_manager import JourneySession
+from voice_agent.session_manager import JourneySession
 
 # Import functions from the agent directory
 import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__), 'agent'))
 
-from agent.journey_booking import (
+from voice_agent.agent.journey_booking import (
     get_existing_addresses,
     save_address_to_api,
     search_volunteers_api,

@@ -67,8 +67,8 @@ coverage.xml
 
 # Documentation
 docs/
-*.md
-README*
+# *.md  # Commented out to allow README.md
+# README*  # Commented out to allow README.md
 
 # Logs
 *.log

@@ -19,11 +19,9 @@ RUN apt-get update && apt-get install -y \
 # Create application directory
 WORKDIR /app
 
-# Create src directory to satisfy pyproject.toml requirement
-RUN mkdir src
-
-# Copy dependency files
-COPY pyproject.toml ./
+# Copy dependency files and source code
+COPY pyproject.toml README.md ./
+COPY src/ ./src/
 
 # Install dependencies to a virtual environment
 RUN python -m venv /opt/venv
@@ -69,4 +67,4 @@ USER appuser
 EXPOSE 8000
 
 # Run the application
-CMD ["uvicorn", "src.server:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+CMD ["uvicorn", "voice_agent.server:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

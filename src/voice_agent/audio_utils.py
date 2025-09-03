@@ -10,7 +10,7 @@ import requests
 import json
 from typing import Optional
 import azure.cognitiveservices.speech as speechsdk
-from agent.speech_services import SpeechServices
+from voice_agent.agent.speech_services import SpeechServices
 import logging
 
 logger = logging.getLogger(__name__)
