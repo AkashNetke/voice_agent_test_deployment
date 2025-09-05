@@ -63,155 +63,60 @@ def root():
 
 @app.post("/message", response_model=Response)
 def voice_agent_echo(payload: Request = Body(...)):
+    logger.info(f"Received Payload - {payload}")
     return Response(
         type=MessageType.AGENT_VOICE_MESSAGE,
         audio_data=payload.data,
         text_data="ok"
     )
 
-@app.post("/message2", response_model=Response)
-def voice_agent(payload: Request = Body(...)):
-    """
-    Main voice agent endpoint
-    Processes voice messages and returns voice responses
-    """
-
-    # Validate message type
-    if payload.type not in [MessageType.USER_TEXT_MESSAGE, MessageType.USER_VOICE_MESSAGE]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only audio and text messages are supported"
-        )
-
+@app.post("/message3", response_model=Response)
+def voice_agent_2(payload: Request = Body(...)):
     logger.info(f"Processing {payload.type.value} message for user {payload.user_id}")
 
-    # Get or create session
+    # TODO - use LLM to generate message
+    if payload.type == MessageType.REQUEST_GREETING:
+        return Response(
+            type=MessageType.AGENT_VOICE_MESSAGE,
+            text_data="HI"
+        )
+
+    # Get session for other message types
     session = session_manager.get_or_create_session(
         user_id=payload.user_id,
         user_name=payload.user_name
     )
 
-    # Convert input to text based on message type
+    # Convert input to text
+    user_text = ""
     if payload.type == MessageType.USER_TEXT_MESSAGE:
         user_text = payload.data.strip()
-        logger.info(f"📝 Direct text input: '{user_text}'")
+        logger.info(f"Text input: '{user_text}'")
     elif payload.type == MessageType.USER_VOICE_MESSAGE:
         if not payload.data or not payload.data.strip():
-            logger.info("🎤 Empty audio data - treating as welcome trigger")
-            user_text = "WELCOME_TRIGGER"  # Special marker for welcome
-        else:
-            try:
-                logger.info("🎤 Processing audio message - starting speech-to-text conversion")
-                logger.info(f"🔍 Audio payload size: {len(payload.data)} Base64 characters")
+            return Response(
+                type=MessageType.EXCEPTION,
+                text_data="No Audio Received"
+            )
 
-                user_text = app_state.audio_processor.speech_to_text_from_base64(payload.data)
-                logger.info(f"🎤 Speech-to-text result: '{user_text}'")
+        user_text = app_state.audio_processor.speech_to_text_from_base64(payload.data)
+        logger.info(f"Speech-to-text result: '{user_text}'")
 
-                # Handle speech recognition results
-                if user_text and user_text.strip():
-                    logger.info(f"✅ USER SAID: '{user_text}'")
-                else:
-                    # Empty result means silence or unclear audio - ignore and wait for clearer speech
-                    logger.info("🔇 No clear speech detected")
-                    # TODO - Mithun, if it is empty audio, should ask LLM to repeat the question (via system prompt and not code handling)
-                    return Response(
-                        type=MessageType.EXCEPTION,
-                        data="No Audio Received"
-                    )
-
-            except Exception as e:
-                logger.error(f"❌ Speech-to-text failed: {str(e)}")
-                logger.error(f"🔍 Full error details: {traceback.format_exc()}")
-                return Response(
-                    type=MessageType.EXCEPTION,
-                    text_data="Speech To Text Conversion Failed"
-                )
-
-    # Initialize session if needed (ONLY for new sessions)
-    if not session.greeting_shown:
-        greeting_message = journey_booking_service.initialize_session(session)
-        logger.info(f"Session initialized with greeting: {greeting_message}")
-
-        # Convert greeting to audio (for audio requests)
-        greeting_audio = None
-        if payload.type == MessageType.USER_VOICE_MESSAGE:
-            try:
-                greeting_audio = app_state.audio_processor.text_to_speech_base64(greeting_message, "greeting")
-                logger.info(f"✅ Greeting audio generated successfully")
-
-            except Exception as e:
-                logger.error(f"❌ Text-to-speech failed for greeting: {str(e)}")
-                # Continue without audio if TTS fails
-                greeting_audio = None
-        else:
-            logger.info(f"Text request - skipping greeting audio generation")
-
-        return Response(
-            type=MessageType.AGENT_VOICE_MESSAGE,
-            audio_data=greeting_audio,
-            text_data=greeting_message
-        )
-
-    # Handle empty audio after greeting has been shown
-    if user_text == "WELCOME_TRIGGER":
-        logger.info("Welcome trigger received for already-greeted session - asking for input")
-        prompt_msg = "How can I help you with your journey today?"
-
-        # Convert prompt to audio (for audio requests)
-        prompt_audio = None
-        if payload.type == MessageType.USER_VOICE_MESSAGE:
-            try:
-                prompt_audio = app_state.audio_processor.text_to_speech_base64(prompt_msg, "general")
-                logger.info(f"✅ Prompt audio generated successfully")
-
-            except Exception as e:
-                logger.error(f"❌ Text-to-speech failed for prompt: {str(e)}")
-                prompt_audio = None
-
-        return Response(
-            type=MessageType.AGENT_VOICE_MESSAGE,
-            text_data=prompt_msg,
-            audio_data=prompt_audio
-        )
+        if not user_text or not user_text.strip():
+            return Response(
+                type=MessageType.EXCEPTION,
+                text_data="No Audio Received"
+            )
 
     # Process user input through journey booking
-    try:
-        response_text, is_complete = journey_booking_service.process_user_input(
-            session, user_text
-        )
-        logger.info(f"Journey booking response: {response_text[:100]}...")
+    response_text, is_complete = journey_booking_service.process_user_input(session, user_text)
 
-    except Exception as e:
-        logger.error(f"Journey booking processing failed: {str(e)}")
-        logger.error(traceback.format_exc())
-
-        error_msg = "I encountered an issue processing your request. Please try again."
-        error_audio = app_state.audio_processor.text_to_speech_base64(error_msg)
-
-        return Response(
-            type=MessageType.AGENT_VOICE_MESSAGE,
-            text_data=error_msg,
-            audio_data=error_audio
-        )
-
-    # Convert response to audio (only for audio requests)
+    # Generate audio for voice messages only
     response_audio = None
-    if payload.type == MessageType.AUDIO:
-        try:
-            # Determine message type for appropriate tone
-            message_type = "success" if is_complete else "general"
-            response_audio = app_state.audio_processor.text_to_speech_base64(response_text, message_type)
+    if payload.type == MessageType.USER_VOICE_MESSAGE:
+        message_type = "success" if is_complete else "general"
+        response_audio = app_state.audio_processor.text_to_speech_base64(response_text, message_type)
 
-            logger.info(f"Response audio generated successfully")
-
-        except Exception as e:
-            logger.error(f"Text-to-speech failed for response: {str(e)}")
-            # Continue without audio if TTS fails
-            response_audio = None
-    else:
-        logger.info(f"Text request - skipping audio generation")
-
-    # Return response
     return Response(
         type=MessageType.AGENT_VOICE_MESSAGE,
         text_data=response_text,
