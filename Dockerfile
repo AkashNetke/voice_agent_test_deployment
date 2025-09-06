@@ -2,13 +2,16 @@
 FROM python:3.11-slim as builder
 
 # Set build arguments
-ARG POETRY_VERSION=1.6.1
+ARG POETRY_VERSION=2.1.0
 
 # Set environment variables for build
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    POETRY_NO_INTERACTION=1 \
+    POETRY_VENV_IN_PROJECT=1 \
+    POETRY_CACHE_DIR=/tmp/poetry_cache
 
 # Install system dependencies required for building
 RUN apt-get update && apt-get install -y \
@@ -16,18 +19,26 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
+# Install Poetry
+RUN pip install poetry==$POETRY_VERSION
+
 # Create application directory
 WORKDIR /app
 
-# Copy dependency files and source code
-COPY pyproject.toml README.md ./
+# Copy Poetry configuration files
+COPY pyproject.toml poetry.lock* ./
+
+# Configure Poetry and install dependencies only (no source code yet)
+RUN poetry config virtualenvs.create true \
+    && poetry config virtualenvs.in-project true \
+    && poetry install --only=main --no-root \
+    && rm -rf $POETRY_CACHE_DIR
+
+# Copy source code
 COPY src/ ./src/
 
-# Install dependencies to a virtual environment
-RUN python -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
-RUN pip install --upgrade pip setuptools wheel
-RUN pip install -e .
+# Install the package itself
+RUN poetry install --only-root
 
 # Production stage
 FROM python:3.11-slim as production
@@ -35,7 +46,7 @@ FROM python:3.11-slim as production
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PATH="/opt/venv/bin:$PATH"
+    PATH="/app/.venv/bin:$PATH"
 
 # Install runtime system dependencies
 RUN apt-get update && apt-get install -y \
@@ -49,16 +60,14 @@ RUN apt-get update && apt-get install -y \
 # Create non-root user for security
 RUN groupadd -r appuser && useradd -r -g appuser appuser
 
-# Copy virtual environment from builder
-COPY --from=builder /opt/venv /opt/venv
-
 # Create application directory and set ownership
 WORKDIR /app
 RUN chown -R appuser:appuser /app
 
-# Copy application code with correct ownership
-COPY --chown=appuser:appuser src/ ./src/
-COPY --chown=appuser:appuser pyproject.toml ./
+# Copy virtual environment and application code from builder
+COPY --from=builder --chown=appuser:appuser /app/.venv /app/.venv
+COPY --from=builder --chown=appuser:appuser /app/src ./src
+COPY --from=builder --chown=appuser:appuser /app/pyproject.toml ./
 
 # Switch to non-root user
 USER appuser

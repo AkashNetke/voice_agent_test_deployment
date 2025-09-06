@@ -6,14 +6,12 @@ Handles voice messages via /message endpoint with Base64 audio processing
 from contextlib import asynccontextmanager
 import logging
 import traceback
-from typing import Optional
-from fastapi import FastAPI, Body, HTTPException, status
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, Body
 from dotenv import load_dotenv
 
 # Import our components
 from voice_agent.model import AppState, Request, Response, MessageType
-from voice_agent.session_manager import session_manager, JourneySession
+from voice_agent.session_manager import JourneySession, session_manager
 from voice_agent.journey_booking_service import journey_booking_service
 from voice_agent.audio_utils import get_audio_processor
 from voice_agent.agent.speech_services import SpeechServices
@@ -82,7 +80,7 @@ def voice_agent_2(payload: Request = Body(...)):
         )
 
     # Get session for other message types
-    session = session_manager.get_or_create_session(
+    session: JourneySession = session_manager.get_or_create_session(
         user_id=payload.user_id,
         user_name=payload.user_name
     )
