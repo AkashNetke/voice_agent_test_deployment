@@ -1,0 +1,55 @@
+### Voice Agent Chat API Test Requests
+### Use this file with VS Code REST Client extension or similar tools
+
+### 1. Test Root Endpoint
+GET http://localhost:8000/
+
+### 2. Send a Chat Message (Main endpoint)
+POST http://localhost:8000/chat
+Content-Type: application/json
+
+{
+  "type": "text",
+  "data": "Hello! Can you help me with travel information?",
+  "user_id": "test-user-123",
+  "user_name": "Test User"
+}
+
+### 3. Send Another Message (Same User - Should Use Same Session)
+POST http://localhost:8000/chat
+Content-Type: application/json
+
+{
+  "type": "text",
+  "data": "Can you remember our previous conversation?",
+  "user_id": "test-user-123",
+  "user_name": "Test User"
+}
+
+### 4. Test Travel Hands Query
+POST http://localhost:8000/chat
+Content-Type: application/json
+
+{
+  "type": "text",
+  "data": "What is the active journey for user 123?",
+  "user_id": "test-user-123",
+  "user_name": "Test User"
+}
+
+### 5. Get Conversation History
+GET http://localhost:8000/chat-history/test-user-123?limit=10
+
+### 6. Test Different User
+POST http://localhost:8000/chat
+Content-Type: application/json
+
+{
+  "type": "text",
+  "data": "Hello from a different user!",
+  "user_id": "test-user-456",
+  "user_name": "Another Test User"
+}
+
+### 7. Delete User Chat History
+DELETE http://localhost:8000/chat-history/test-user-123
