@@ -15,22 +15,22 @@ logger = logging.getLogger(__name__)
 
 class CosmosDBClient:
     """Client for interacting with Azure Cosmos DB for chat history."""
-    
+
     def __init__(self):
         """Initialize the Cosmos DB client."""
         self.endpoint = os.getenv("COSMOS_DB_ENDPOINT")
         self.key = os.getenv("COSMOS_DB_KEY")
-        self.database_name = os.getenv("COSMOS_DB_DATABASE", "voice-agent-db")
-        
+        self.database_name = os.getenv("COSMOS_DB_DATABASE", "AgentChatHistory")
+
         if not self.endpoint or not self.key:
             raise ValueError("COSMOS_DB_ENDPOINT and COSMOS_DB_KEY must be set in environment variables")
-        
+
         self.client = CosmosClient(self.endpoint, self.key)
         self.database = None
         self.messages_container = None
-        
+
         self._initialize_database()
-    
+
     def _initialize_database(self):
         """Initialize database and containers."""
         try:
@@ -42,10 +42,10 @@ class CosmosDBClient:
             except Exception:
                 self.database = self.client.create_database(self.database_name)
                 logger.info(f"Created new database: {self.database_name}")
-            
+
             # Only need one container now: chat_messages
             # Remove chat_sessions container completely
-            
+
             try:
                 # Check if container exists first
                 try:
@@ -75,11 +75,11 @@ class CosmosDBClient:
                         logger.info("Messages container created (serverless) with 24h TTL")
                 else:
                     raise
-                    
+
         except Exception as e:
             logger.error(f"Failed to initialize database: {e}")
             raise
-    
+
     def save_message(self, message: ChatMessage) -> bool:
         """Save a message to Cosmos DB."""
         try:
@@ -91,7 +91,7 @@ class CosmosDBClient:
         except Exception as e:
             logger.error(f"Failed to save message: {e}")
             return False
-    
+
     def get_user_messages(self, user_id: str, limit: int = 100) -> List[ChatMessage]:
         """Get all messages for a specific user."""
         try:
@@ -100,47 +100,47 @@ class CosmosDBClient:
                 {"name": "@user_id", "value": user_id},
                 {"name": "@limit", "value": limit}
             ]
-            
+
             # Use cross-partition query since the container might not be partitioned by user_id
             items = list(self.messages_container.query_items(
                 query=query,
                 parameters=parameters,
                 enable_cross_partition_query=True
             ))
-            
+
             messages = [ChatMessage.from_dict(item) for item in items]
             logger.info(f"Retrieved {len(messages)} messages for user {user_id}")
             return messages
-            
+
         except Exception as e:
             logger.error(f"Failed to get user messages: {e}")
             return []
-    
+
     def delete_user_messages(self, user_id: str) -> bool:
         """Delete all messages for a specific user."""
         try:
             query = "SELECT c.id FROM c WHERE c.user_id = @user_id"
             parameters = [{"name": "@user_id", "value": user_id}]
-            
+
             items = list(self.messages_container.query_items(
                 query=query,
                 parameters=parameters,
                 partition_key=user_id
             ))
-            
+
             for item in items:
                 self.messages_container.delete_item(
                     item=item["id"],
                     partition_key=user_id
                 )
-            
+
             logger.info(f"Deleted all messages for user {user_id}")
             return True
-            
+
         except Exception as e:
             logger.error(f"Failed to delete user messages: {e}")
             return False
-    
+
 # Singleton instance
 _cosmos_client = None
 
