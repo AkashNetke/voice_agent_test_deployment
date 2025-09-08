@@ -1,12 +1,8 @@
 name: Deploy to Production
 
 on:
-  workflow_dispatch:
-    inputs:
-      image_tag:
-        description: 'Image tag to deploy (defaults to latest)'
-        required: false
-        default: 'latest'
+  push:
+    branches: [ main ]
 
 env:
   # Azure Container Registry name

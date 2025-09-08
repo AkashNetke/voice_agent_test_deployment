@@ -4,41 +4,56 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Development Environment Setup
 
-This is a Python FastAPI project with LangChain LLM agent and WebSocket support. Always work within a virtual environment:
+This is a Python FastAPI project with LangChain LLM agent and WebSocket support, managed by Poetry:
 
 ```bash
-# Create and activate virtual environment
-python -m venv venv
-source venv/bin/activate  # Mac/Linux
-# or
-venv/Scripts/activate.bat  # Windows
+# Install Poetry if not already installed
+pip install poetry
 
-# Install dependencies
-pip install -e .[dev]
+# Install dependencies (creates virtual environment automatically)
+poetry install --no-root  # For development against source code
+# or
+poetry install --with dev  # Includes dev dependencies and editable package
+
+# Activate virtual environment
+poetry shell
 ```
 
 ## Common Development Commands
 
 ### Running the Service
 ```bash
-uvicorn src.main:app --reload
+# If using poetry shell
+uvicorn src.voice_agent.server:app --reload
+
+# Or using poetry run
+poetry run uvicorn src.voice_agent.server:app --reload
 ```
 
 ### Testing
 ```bash
+# If using poetry shell
 pytest                    # Run all tests
 pytest tests/test_server.py  # Run specific test file
+
+# Or using poetry run
+poetry run pytest                    # Run all tests
+poetry run pytest tests/test_server.py  # Run specific test file
 ```
 
 ### Code Quality
 ```bash
-# Format code
+# If using poetry shell
 black src tests
 isort src tests
-
-# Lint and type check
 ruff src tests
 mypy src
+
+# Or using poetry run
+poetry run black src tests
+poetry run isort src tests
+poetry run ruff src tests
+poetry run mypy src
 ```
 
 ## Architecture Overview

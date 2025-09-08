@@ -1,38 +1,36 @@
-[build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
-
-[project]
+[tool.poetry]
 name = "voice-agent"
 version = "0.1.0"
-description = "A FastAPI service with LangChain LLM agent and WebSocket chat."
-authors = [
-    { name="Your Name", email="your@email.com" }
-]
-requires-python = ">=3.9"
-dependencies = [
-    "fastapi",
-    "uvicorn[standard]",
-    "langchain",
-    "langchain-openai",
-    "python-dotenv",
-    "azure-cognitiveservices-speech",
-    "ffmpeg",
-    "azure-cosmos"
+description = "Voice Agent for Journey Booking"
+authors = ["Your Name <you@example.com>"]
+packages = [
+    { include = "voice_agent", from = "src" }
 ]
 
-[project.optional-dependencies]
-dev = [
-    "pytest",
-    "httpx",
-    "black",
-    "isort",
-    "mypy",
-    "ruff"
-]
+[tool.poetry.dependencies]
+python = "^3.9"
+azure-cognitiveservices-speech = "^1.45.0"
+python-dotenv = "^1.1.1"
+langchain = "^0.3.0"
+langchain-openai = "^0.3.32"
+requests = "^2.32.5"
+python-dateutil = "^2.9.0"
+fastapi = "^0.116.1"
+uvicorn = {extras = ["standard"], version = "^0.35.0"}
+pydantic = "^2.11.7"
+"azure-cosmos" = "^4.9.0"
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.4.2"
+httpx = "^0.28.1"
+black = "^24.10.0"
+isort = "^6.0.1"
+mypy = "^1.17.1"
+ruff = "^0.4.7"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
 
 [tool.black]
 line-length = 88

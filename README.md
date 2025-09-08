@@ -2,62 +2,54 @@
 
 ## Structure
 
-Self explanatory, `src` contains source code, `test` contains tests. `pyproject.toml` is the build definition
+Self explanatory, `src` contains source code, `test` contains tests. `pyproject.toml` is the build definition managed by Poetry.
 
 ## Project setup for development
 
-Have latest Python installed in the machine
+### Prerequisites
+- Latest Python (3.9+) installed on your machine
+- [Poetry](https://python-poetry.org/docs/#installation) installed globally
 
-Use terminal to do the next steps in Mac, Linux or Windows
+### Setup Steps
 
-1. Create a virtual environment in the project folder
-
+1. **Install Poetry** (if not already installed):
 ```sh
-python -m venv venv
+# Via pip (recommended)
+pip install poetry
+
+# Or via curl (Linux/macOS)
+curl -sSL https://install.python-poetry.org | python3 -
 ```
 
-2. Always activate your virtual environment before doing anything
-
-Mac / Linux
+2. **Install dependencies** (creates virtual environment automatically):
 ```sh
-source venv/bin/activate
+# Install only runtime dependencies
+poetry install --no-root
+
+# Or install with dev dependencies
+poetry install --with dev --no-root
 ```
 
-Windows
+3. **Run the service**:
 ```sh
-venv/Scripts/activate.bat
+PYTHONPATH=src poetry run uvicorn src.voice_agent.server:app --reload
 ```
 
-3. Install the dependencies via pip
-
+5. **Run tests**:
 ```sh
-pip install -e .[dev]
+poetry run pytest
 ```
 
-4. Run the service
-
+6. **Format code**:
 ```sh
-uvicorn src.server:app --reload
+poetry run black src tests
+poetry run isort src tests
 ```
 
-5. Run tests
-
+7. **Lint code**:
 ```sh
-pytest
-```
-
-6. Format code:
-
-```sh
-black src tests
-isort src tests
-```
-
-7. Lint code:
-
-```sh
-ruff src tests
-mypy src
+poetry run ruff src tests
+poetry run mypy src
 ```
 
 8. Secrets
