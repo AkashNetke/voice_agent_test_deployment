@@ -1,5 +1,22 @@
 # LLM Integration Analysis: Journey Booking Service
 
+## Journey Booking Workflow
+
+We are building an LLM agent to book travel journeys for blind people where volunteers can help them make the journey using only public transport
+Blind people will interact with the agent provide their details of journey required and get matched up with volunteers who can help them
+Journey Booking Workflow involves these steps
+- selecting the pickup address
+  - this can be a new address, or an existing saved address in the backend (like their home)
+    - we have an API to fetch user's saved addresses
+  - if it is a new address, it needs to be saved into user profile with an identifiable name
+- selecting the dropoff address
+  - this can be a new address, or an existing saved address in the backend (like their GP)
+    - we have an API to fetch user's saved addresses
+  - if it is a new address, it needs to be saved into user profile with an identifable name
+- providing a date, time, reason, duration and importance (critical or flexible) of their journey
+- backend will search for available volunteers for the date, time and duration and provide upto 3 options with their names and some bio
+- user should select from those three, once selection is done, journey payload is saved into backend API call (with the selected volunteer)
+
 ## Current Architecture Analysis
 
 ### Overview

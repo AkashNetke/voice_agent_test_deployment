@@ -32,7 +32,7 @@ poetry install --with dev --no-root
 
 3. **Run the service**:
 ```sh
-PYTHONPATH=src poetry run uvicorn src.voice_agent.server:app --reload
+poetry run uvicorn src.voice_agent.server:app --reload
 ```
 
 5. **Run tests**:
