@@ -20,6 +20,7 @@ fastapi = "^0.116.1"
 uvicorn = {extras = ["standard"], version = "^0.35.0"}
 pydantic = "^2.11.7"
 "azure-cosmos" = "^4.9.0"
+langchain-azure-ai = "^0.1.5"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.4.2"

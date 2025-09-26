@@ -11,6 +11,19 @@ from azure.cosmos import CosmosClient
 
 load_dotenv()
 
+@dataclass
+class SpeakSession:
+    bark_tool_count: int
+    whisper_tool_count: int
+    session_id: str
+
+@dataclass
+class ChatMessage:
+    message_type: str  # "human" or "ai"
+    content: str
+    timestamp: str
+    session_id: str
+
 # Cosmos DB helper functions
 def read_session_from_cosmos(session_id: str) -> Dict:
     """Read session data from Cosmos DB"""
@@ -92,7 +105,7 @@ def save_chat_message(session_id: str, message_type: str, content: str) -> None:
     except Exception as e:
         print(f"Failed to save chat message: {str(e)}")
 
-def load_chat_messages(session_id: str) -> List["ChatMessage"]:
+def load_chat_messages(session_id: str) -> List[ChatMessage]:
     """Load chat messages from Cosmos DB for a given session"""
     try:
         cosmos_client = CosmosClient(
@@ -129,7 +142,7 @@ def load_chat_messages(session_id: str) -> List["ChatMessage"]:
         print(f"Failed to load chat messages: {str(e)}")
         return []
 
-def format_messages_for_prompt(messages: List["ChatMessage"]) -> List[tuple]:
+def format_messages_for_prompt(messages: List[ChatMessage]) -> List[tuple]:
     """Format chat messages for inclusion in prompt"""
     if not messages:
         return []
@@ -143,20 +156,8 @@ def format_messages_for_prompt(messages: List["ChatMessage"]) -> List[tuple]:
 
     return formatted_messages
 
-@dataclass
-class SpeakSession:
-    bark_tool_count: int
-    whisper_tool_count: int
-    session_id: str
 
-@dataclass
-class ChatMessage:
-    message_type: str  # "human" or "ai"
-    content: str
-    timestamp: str
-    session_id: str
-
-llm = AzureChatOpenAI(
+azure_chat = AzureChatOpenAI(
     azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
     api_key=os.getenv("AZURE_OPENAI_API_KEY"),
     api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
@@ -174,7 +175,9 @@ There are two tools available:
 2. whisper_tool - you need to use this tool when someone asks you to talk softly, whisper - you get the hang of it
 
 Guidelines:
-DO NOT answer to anything else other than what these tools match to. You can say "sorry i cannot do that"
+- DO NOT answer to anything else other than what these tools match to. You can say "sorry i cannot do that"
+- Always call the tool even if you already know the result
+- Always call a tool just once for one user input
 """
 
 prompt = ChatPromptTemplate.from_messages([
@@ -186,8 +189,9 @@ prompt = ChatPromptTemplate.from_messages([
 
 def create_bark_tool(session_id: str):
     @tool
-    def bark_tool() -> str:
+    def bark_tool(user_input: str) -> str:
         """this is the bark tool"""
+        print(f"This is user input in bark tool - {user_input}")
         # Read current session from Cosmos
         session_data = read_session_from_cosmos(session_id)
 
@@ -202,9 +206,10 @@ def create_bark_tool(session_id: str):
 
 def create_whisper_tool(session_id: str):
     @tool
-    def whisper_tool() -> str:
+    def whisper_tool(user_input: str) -> str:
         """this is the whisper tool"""
         # Read current session from Cosmos
+        print(f"This is user input in whisper tool - {user_input}")
         session_data = read_session_from_cosmos(session_id)
 
         # Modify
@@ -216,7 +221,7 @@ def create_whisper_tool(session_id: str):
         return "pspspspsps..."
     return whisper_tool
 
-def create_agent_for_session(session_id: str):
+def create_agent_for_session(llm: AzureChatOpenAI, prompt: ChatPromptTemplate, session_id: str):
     """Create an agent with session-specific tools"""
     tools = [create_bark_tool(session_id), create_whisper_tool(session_id)]
 
@@ -231,14 +236,17 @@ def create_agent_for_session(session_id: str):
 
     return agent_executor
 
-def execute_agent_with_history(session_id: str, user_input: str) -> str:
+def execute_agent_with_history(session_id: str, user_input: str, llm: AzureChatOpenAI = None) -> str:
     """Execute agent with manual chat history management"""
+    # Use provided LLM or default to azure_chat
+    llm_instance = llm if llm is not None else azure_chat
+
     # Load existing chat history
     messages = load_chat_messages(session_id)
     chat_history_messages = format_messages_for_prompt(messages)
 
     # Create agent for this session
-    agent_executor = create_agent_for_session(session_id)
+    agent_executor = create_agent_for_session(llm_instance, prompt, session_id)
 
     # Execute agent with formatted history and user input
     result = agent_executor.invoke({
@@ -261,22 +269,27 @@ if __name__ == "__main__":
     print("Test 1: Bark")
     result1 = execute_agent_with_history(session_id, "bark for me")
     print(f"Result: {result1}\n")
+    print("-------------")
 
     print("Test 2: Whisper")
     result2 = execute_agent_with_history(session_id, "now whisper")
     print(f"Result: {result2}\n")
+    print("-------------")
 
     print("Test 3: Bark again")
     result3 = execute_agent_with_history(session_id, "bark again")
     print(f"Result: {result3}\n")
+    print("-------------")
 
     print("Test 4: Scream")
     result4 = execute_agent_with_history(session_id, "scream")
     print(f"Result: {result4}\n")
+    print("-------------")
 
     print("Test 5: Somersault")
     result5 = execute_agent_with_history(session_id, "do somersault")
     print(f"Result: {result5}\n")
+    print("-------------")
 
     # Display session statistics from Cosmos DB
     session_data = read_session_from_cosmos(session_id)
@@ -310,7 +323,7 @@ if __name__ == "__main__":
 # - tool now loads and saves session atomically
 # - agent loads and saves chat messages
 # TO DO
-# - expose this over API driven via session_id
+# - expose this over API driven via session_id - done
 # - "fetch from api" tool (or load beforehand and pass in prompt) call TH API
 # - parse date and time
 # - "save to api" tool call TH API
