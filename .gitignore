@@ -162,3 +162,33 @@ checkpoints/
 node_modules/
 
 .env
+
+# Voice Agent specific ignores
+# Audio response files
+response_*.wav
+*.wav
+
+# Debug and test scripts
+debug_*.py
+test_*.py
+*_test.py
+*_debug.py
+discover_*.py
+fix_*.py
+integration_test_*.py
+api_endpoints_*.py
+final_*.py
+working_*.py
+audio_format_*.py
+pickup_time_*.py
+
+# Backup files
+*.backup
+*.bak
+
+# Shell scripts (except official ones)
+*.sh
+
+# Analysis files
+*_analysis.py
+langchain_*.py

@@ -28,31 +28,38 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Initialize FastAPI app
-app = FastAPI(
-    title="Voice Agent API",
-    description="Voice-powered journey booking API with Azure Speech Services",
-    version="1.0.0"
-)
-
-# Application Dependencies
-app_state = AppState(speech_services=None, audio_processor=None)
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager - handles startup and shutdown"""
     # Startup
     logger.info("🚀 Starting Voice Agent API...")
 
-    # Initialize speech services, app will crash if this does not go through, that's ok
-    app_state.speech_services = SpeechServices()
-    app_state.audio_processor = get_audio_processor(app_state.speech_services)
-    logger.info("✅ Speech services initialized successfully")
+    # Try to initialize speech services, but continue if it fails
+    try:
+        app_state.speech_services = SpeechServices()
+        app_state.audio_processor = get_audio_processor(app_state.speech_services)
+        logger.info("✅ Speech services initialized successfully")
+    except Exception as e:
+        logger.warning(f"⚠️  Speech services initialization failed: {str(e)}")
+        logger.warning("🔄 Continuing without speech services - text-only mode available")
+        app_state.speech_services = None
+        app_state.audio_processor = None
 
     yield  # Application runs here
 
     # Shutdown
     logger.info("🔄 Shutting down Voice Agent API...")
+
+# Initialize FastAPI app
+app = FastAPI(
+    title="Voice Agent API",
+    description="Voice-powered journey booking API with Azure Speech Services",
+    version="1.0.0",
+    lifespan=lifespan
+)
+
+# Application Dependencies
+app_state = AppState(speech_services=None, audio_processor=None)
 
 @app.get("/")
 def root():
@@ -75,15 +82,24 @@ def voice_agent(payload: Request = Body(...)):
     Main voice agent endpoint
     Processes voice messages and returns voice responses
     """
+    
+    # Log incoming request details
+    logger.info(f"🔵 INCOMING REQUEST - User: {payload.user_id}, Type: {payload.type.value}")
+    logger.info(f"📊 Request details - Session: {payload.user_id}, Name: {payload.user_name}")
+    if payload.data:
+        logger.info(f"📏 Payload size: {len(payload.data)} characters")
+    else:
+        logger.info("📭 Empty payload received")
 
     # Validate message type
     if payload.type not in [MessageType.USER_TEXT_MESSAGE, MessageType.USER_VOICE_MESSAGE]:
+        logger.error(f"❌ Invalid message type: {payload.type.value}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Only audio and text messages are supported"
         )
 
-    logger.info(f"Processing {payload.type.value} message for user {payload.user_id}")
+    logger.info(f"✅ Processing {payload.type.value} message for user {payload.user_id}")
 
     # Get or create session
     session = session_manager.get_or_create_session(
@@ -96,6 +112,12 @@ def voice_agent(payload: Request = Body(...)):
         user_text = payload.data.strip()
         logger.info(f"📝 Direct text input: '{user_text}'")
     elif payload.type == MessageType.USER_VOICE_MESSAGE:
+        if not app_state.audio_processor:
+            return Response(
+                type=MessageType.EXCEPTION,
+                text_data="Speech services not available - please use text messages"
+            )
+            
         if not payload.data or not payload.data.strip():
             logger.info("🎤 Empty audio data - treating as welcome trigger")
             user_text = "WELCOME_TRIGGER"  # Special marker for welcome
@@ -116,7 +138,7 @@ def voice_agent(payload: Request = Body(...)):
                     # TODO - Mithun, if it is empty audio, should ask LLM to repeat the question (via system prompt and not code handling)
                     return Response(
                         type=MessageType.EXCEPTION,
-                        data="No Audio Received"
+                        text_data="No Audio Received"
                     )
 
             except Exception as e:
@@ -134,7 +156,7 @@ def voice_agent(payload: Request = Body(...)):
 
         # Convert greeting to audio (for audio requests)
         greeting_audio = None
-        if payload.type == MessageType.USER_VOICE_MESSAGE:
+        if payload.type == MessageType.USER_VOICE_MESSAGE and app_state.audio_processor:
             try:
                 greeting_audio = app_state.audio_processor.text_to_speech_base64(greeting_message, "greeting")
                 logger.info(f"✅ Greeting audio generated successfully")
@@ -144,7 +166,7 @@ def voice_agent(payload: Request = Body(...)):
                 # Continue without audio if TTS fails
                 greeting_audio = None
         else:
-            logger.info(f"Text request - skipping greeting audio generation")
+            logger.info(f"Text request or audio processor unavailable - skipping greeting audio generation")
 
         return Response(
             type=MessageType.AGENT_VOICE_MESSAGE,
@@ -159,7 +181,7 @@ def voice_agent(payload: Request = Body(...)):
 
         # Convert prompt to audio (for audio requests)
         prompt_audio = None
-        if payload.type == MessageType.USER_VOICE_MESSAGE:
+        if payload.type == MessageType.USER_VOICE_MESSAGE and app_state.audio_processor:
             try:
                 prompt_audio = app_state.audio_processor.text_to_speech_base64(prompt_msg, "general")
                 logger.info(f"✅ Prompt audio generated successfully")
@@ -186,7 +208,12 @@ def voice_agent(payload: Request = Body(...)):
         logger.error(traceback.format_exc())
 
         error_msg = "I encountered an issue processing your request. Please try again."
-        error_audio = app_state.audio_processor.text_to_speech_base64(error_msg)
+        error_audio = None
+        if app_state.audio_processor:
+            try:
+                error_audio = app_state.audio_processor.text_to_speech_base64(error_msg)
+            except Exception:
+                pass  # Continue without audio if TTS fails
 
         return Response(
             type=MessageType.AGENT_VOICE_MESSAGE,
@@ -196,7 +223,7 @@ def voice_agent(payload: Request = Body(...)):
 
     # Convert response to audio (only for audio requests)
     response_audio = None
-    if payload.type == MessageType.AUDIO:
+    if payload.type == MessageType.USER_VOICE_MESSAGE and app_state.audio_processor:
         try:
             # Determine message type for appropriate tone
             message_type = "success" if is_complete else "general"
@@ -209,7 +236,7 @@ def voice_agent(payload: Request = Body(...)):
             # Continue without audio if TTS fails
             response_audio = None
     else:
-        logger.info(f"Text request - skipping audio generation")
+        logger.info(f"Text request or audio processor unavailable - skipping audio generation")
 
     # Return response
     return Response(
