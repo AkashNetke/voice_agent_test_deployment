@@ -668,7 +668,7 @@ def parse_pickup_time(user_input):
         logging.warning(f"DEBUG: Error parsing time '{cleaned_input}': {e}")
         return None
 
-def save_journey_to_api(journey_data):
+def save_journey_to_api(session, journey_data):
     """Save journey booking data to Travel Hands API (legacy function for compatibility)"""
     # Map journey data to pickup address format
     pickup_data = {
@@ -679,7 +679,7 @@ def save_journey_to_api(journey_data):
         'special_notes': f"Destination: {journey_data.get('destination', '')}. {journey_data.get('special_notes', '')}"
     }
     
-    return save_address_to_api(pickup_data, address_category="Pickup", existing_types=[])
+    return save_address_to_api(session, pickup_data, address_category="Pickup", existing_types=[])
 
 def format_postcode(postcode):
     """Format postcode by removing all special characters and spaces, keeping only alphanumeric characters (6-8 chars)"""
@@ -798,6 +798,14 @@ if __name__ == "__main__":
             st.error(f"Error initializing speech services: {str(e)}")
 
     travel_hands_client = TravelHandsClient()
+    
+    # Create a mock session object for Streamlit context
+    class MockSession:
+        def __init__(self):
+            self.user_id = "streamlit_user"  # Default user ID for Streamlit
+            self.auth_token = None  # Will use environment/fallback token
+    
+    mock_session = MockSession()
 
     def get_time_based_greeting():
         """Generate greeting based on current time"""
@@ -1073,7 +1081,7 @@ if __name__ == "__main__":
                 st.session_state.journey_data["destination"] = user_input.strip()
             
                 # Check for existing pickup addresses
-                addresses_result = get_existing_addresses()
+                addresses_result = get_existing_addresses(mock_session)
                 if addresses_result["success"] and addresses_result["addresses"]:
                     st.session_state.journey_data["existing_addresses"] = addresses_result["addresses"]
                     addresses_list = format_addresses_list(addresses_result["addresses"])
@@ -1110,7 +1118,7 @@ if __name__ == "__main__":
                     
                         # Move to destination address selection
                         # Check for existing destination addresses
-                        addresses_result = get_existing_addresses()
+                        addresses_result = get_existing_addresses(mock_session)
                         if addresses_result["success"] and addresses_result["addresses"]:
                             st.session_state.journey_step = "dest_address_selection"  # Go directly to selection step
                             addresses_list = format_addresses_list(addresses_result["addresses"])
@@ -1180,6 +1188,7 @@ if __name__ == "__main__":
                 }
             
                 pickup_result = save_address_to_api(
+                    mock_session,
                     pickup_data, 
                     address_category="Pickup",
                     existing_types=st.session_state.existing_address_types
@@ -1193,7 +1202,7 @@ if __name__ == "__main__":
                         st.session_state.existing_address_types.append(pickup_result.get("address_type"))
                 
                     # Check for existing destination addresses
-                    addresses_result = get_existing_addresses()
+                    addresses_result = get_existing_addresses(mock_session)
                     if addresses_result["success"] and addresses_result["addresses"]:
                         st.session_state.journey_step = "dest_address_selection"  # Go directly to selection step
                         addresses_list = format_addresses_list(addresses_result["addresses"])
@@ -1295,6 +1304,7 @@ if __name__ == "__main__":
                 }
             
                 dest_result = save_address_to_api(
+                    mock_session,
                     dest_data, 
                     address_category="Destination",
                     existing_types=st.session_state.existing_address_types
@@ -1397,7 +1407,7 @@ if __name__ == "__main__":
                     logging.info(f"DEBUG: Volunteer time accepted: {standardized_time}")
                 
                     # Search for volunteers
-                    volunteer_search_result = search_volunteers_api(st.session_state.journey_data)
+                    volunteer_search_result = search_volunteers_api(mock_session, st.session_state.journey_data)
                 
                     if volunteer_search_result["success"]:
                         st.session_state.journey_data["volunteers"] = volunteer_search_result.get("volunteers", [])
