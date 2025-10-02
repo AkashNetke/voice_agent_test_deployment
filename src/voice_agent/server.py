@@ -204,7 +204,7 @@ def voice_agent(payload: Request = Body(...)):
 
     # Process user input through journey booking
     try:
-        response_text, is_complete = journey_booking_service.process_journey_step(
+        response_text, is_complete = journey_booking_service.process_user_input(
             session, user_text
         )
         logger.info(f"Journey booking response: {response_text[:100]}...")
