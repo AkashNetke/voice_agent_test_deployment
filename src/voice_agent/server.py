@@ -86,17 +86,18 @@ def voice_agent(payload: Request = Body(...)):
     # Log incoming request details
     logger.info(f"🔵 INCOMING REQUEST - User: {payload.user_id}, Type: {payload.type.value}")
     logger.info(f"📊 Request details - Session: {payload.user_id}, Name: {payload.user_name}")
+    logger.info(f"🔑 Auth token received: {payload.token[:20] if payload.token else 'None'}...")
     if payload.data:
         logger.info(f"📏 Payload size: {len(payload.data)} characters")
     else:
         logger.info("📭 Empty payload received")
 
     # Validate message type
-    if payload.type not in [MessageType.USER_TEXT_MESSAGE, MessageType.USER_VOICE_MESSAGE]:
+    if payload.type not in [MessageType.USER_TEXT_MESSAGE, MessageType.USER_VOICE_MESSAGE, MessageType.REQUEST_GREETING]:
         logger.error(f"❌ Invalid message type: {payload.type.value}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only audio and text messages are supported"
+            detail="Only audio, text, and greeting request messages are supported"
         )
 
     logger.info(f"✅ Processing {payload.type.value} message for user {payload.user_id}")
@@ -104,13 +105,18 @@ def voice_agent(payload: Request = Body(...)):
     # Get or create session
     session = session_manager.get_or_create_session(
         user_id=payload.user_id,
-        user_name=payload.user_name
+        user_name=payload.user_name,
+        auth_token=payload.token
     )
+    logger.info(f"🔑 Session auth token: {session.auth_token[:20] if session.auth_token else 'None'}...")
 
     # Convert input to text based on message type
     if payload.type == MessageType.USER_TEXT_MESSAGE:
         user_text = payload.data.strip()
         logger.info(f"📝 Direct text input: '{user_text}'")
+    elif payload.type == MessageType.REQUEST_GREETING:
+        user_text = "WELCOME_TRIGGER"  # Special marker for greeting request
+        logger.info(f"👋 Greeting request received")
     elif payload.type == MessageType.USER_VOICE_MESSAGE:
         if not app_state.audio_processor:
             return Response(
@@ -156,7 +162,7 @@ def voice_agent(payload: Request = Body(...)):
 
         # Convert greeting to audio (for audio requests)
         greeting_audio = None
-        if payload.type == MessageType.USER_VOICE_MESSAGE and app_state.audio_processor:
+        if (payload.type == MessageType.USER_VOICE_MESSAGE or payload.type == MessageType.REQUEST_GREETING) and app_state.audio_processor:
             try:
                 greeting_audio = app_state.audio_processor.text_to_speech_base64(greeting_message, "greeting")
                 logger.info(f"✅ Greeting audio generated successfully")

@@ -132,7 +132,7 @@ class JourneyBookingService:
             session.journey_data["destination"] = user_input.strip()
 
             # Check for existing pickup addresses
-            addresses_result = get_existing_addresses()
+            addresses_result = get_existing_addresses(session)
             if addresses_result["success"] and addresses_result["addresses"]:
                 session.journey_data["existing_addresses"] = addresses_result["addresses"]
                 addresses_list = format_addresses_list(addresses_result["addresses"])
@@ -165,7 +165,7 @@ class JourneyBookingService:
                     })
 
                     # Move to destination address selection
-                    addresses_result = get_existing_addresses()
+                    addresses_result = get_existing_addresses(session)
                     if addresses_result["success"] and addresses_result["addresses"]:
                         session.journey_step = "dest_address_selection"
                         addresses_list = format_addresses_list(addresses_result["addresses"])
@@ -223,6 +223,7 @@ class JourneyBookingService:
             }
 
             pickup_result = save_address_to_api(
+                session,
                 pickup_data,
                 address_category="Pickup",
                 existing_types=session.existing_address_types
@@ -235,7 +236,7 @@ class JourneyBookingService:
                     session.existing_address_types.append(pickup_result.get("address_type"))
 
                 # Check for existing destination addresses
-                addresses_result = get_existing_addresses()
+                addresses_result = get_existing_addresses(session)
                 if addresses_result["success"] and addresses_result["addresses"]:
                     session.journey_step = "dest_address_selection"
                     addresses_list = format_addresses_list(addresses_result["addresses"])
@@ -342,7 +343,7 @@ class JourneyBookingService:
                     return f"Journey booking incomplete: {validation_result['error']}. Please start a new journey."
 
                 # Search for volunteers
-                volunteer_search_result = search_volunteers_api(session.journey_data)
+                volunteer_search_result = search_volunteers_api(session, session.journey_data)
 
                 # Always mark journey as complete and provide journey details
                 session.journey_step = "complete"

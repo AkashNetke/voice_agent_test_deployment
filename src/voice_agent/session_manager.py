@@ -17,6 +17,7 @@ class JourneySession:
     """Represents a user's journey booking session"""
     user_id: str
     user_name: str
+    auth_token: str
     created_at: datetime = field(default_factory=datetime.now)
     last_activity: datetime = field(default_factory=datetime.now)
 
@@ -45,12 +46,13 @@ class SessionManager:
         self._cleanup_interval = 300  # 5 minutes
         self._last_cleanup = time.time()
 
-    def _create_session(self, user_id: str, user_name: str) -> JourneySession:
+    def _create_session(self, user_id: str, user_name: str, auth_token: str) -> JourneySession:
         """Create a new journey booking session"""
         with self._lock:
             session = JourneySession(
                 user_id=user_id,
-                user_name=user_name
+                user_name=user_name,
+                auth_token=auth_token
             )
 
             self.sessions[user_id] = session
@@ -74,16 +76,19 @@ class SessionManager:
                 return session
             return None
 
-    def get_or_create_session(self, user_id: str, user_name: str) -> JourneySession:
+    def get_or_create_session(self, user_id: str, user_name: str, auth_token: str) -> JourneySession:
         """Get existing session or create new one"""
         with self._lock:
             if user_id:
                 session = self._get_session(user_id)
                 if session:
+                    # Update auth token if provided
+                    if auth_token:
+                        session.auth_token = auth_token
                     return session
 
             # Create new session
-            return self._create_session(user_id, user_name)
+            return self._create_session(user_id, user_name, auth_token)
 
     def _cleanup_expired_sessions(self):
         """Remove expired sessions (called periodically)"""
