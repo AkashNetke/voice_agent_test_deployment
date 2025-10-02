@@ -1,5 +1,4 @@
 import os
-import streamlit as st
 import time
 from datetime import datetime
 from dateutil import parser as date_parser
@@ -16,16 +15,24 @@ load_dotenv()
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 
-def get_auth_token():
-    """Get authentication token from environment or API"""
+def get_auth_token(session=None):
+    """Get authentication token from session, environment, or fallback"""
+    # Use token from session if available
+    if session and hasattr(session, 'auth_token') and session.auth_token:
+        logging.info(f"🔑 Using session auth token: {session.auth_token[:20]}...")
+        return session.auth_token
+    
     # First try to get from environment variable
     token = os.getenv("TRAVEL_HANDS_AUTH_TOKEN")
     if token:
+        logging.info(f"🔑 Using environment auth token: {token[:20]}...")
         return token
     
     # Fallback to hardcoded token (should be updated)
     # TODO: Implement proper authentication flow
-    return "eyJhbGciOiJIUzUxMiJ9.eyJzdWIiOiJ0ZXN0dmlwQGdtYWlsLmNvbSIsIm5hbWUiOiJUb20iLCJpZCI6NDUyLCJyb2xlIjoiUk9MRV9WSVAiLCJleHAiOjE3NjAxMTAzMTd9.klAKbXufUetArABUXReg8fRw4psffXn45xHa2r6WED22wRnqAjIhFcf6P1lFcHintUiBl_oHFmAEM8p5aF5BXA"
+    fallback_token = "eyJhbGciOiJIUzUxMiJ9.eyJzdWIiOiJ0ZXN0dmlwQGdtYWlsLmNvbSIsIm5hbWUiOiJUb20iLCJpZCI6NDUyLCJyb2xlIjoiUk9MRV9WSVAiLCJleHAiOjE3NjAxMTAzMTd9.klAKbXufUetArABUXReg8fRw4psffXn45xHa2r6WED22wRnqAjIhFcf6P1lFcHintUiBl_oHFmAEM8p5aF5BXA"
+    logging.info(f"🔑 Using fallback auth token: {fallback_token[:20]}...")
+    return fallback_token
 
 # Initialize Azure OpenAI for address type generation
 def get_azure_openai_client():
@@ -93,9 +100,8 @@ Generate only the address type, nothing else:
 
 # Travel Hands API configuration
 TRAVEL_HANDS_API_BASE_URL = "https://travelhands-test-e5a3h9akcfevhwc4.uksouth-01.azurewebsites.net"
-SAVE_ADDRESS_ENDPOINT = f"{TRAVEL_HANDS_API_BASE_URL}/api/vip/saveAddress/330"
 
-def save_address_to_api(address_data, address_category="Pickup", existing_types=None):
+def save_address_to_api(session, address_data, address_category="Pickup", existing_types=None):
     """Save address data to Travel Hands API with LLM-generated address type"""
     try:
         if existing_types is None:
@@ -124,11 +130,15 @@ def save_address_to_api(address_data, address_category="Pickup", existing_types=
         logging.info(f"SAVING {address_category.upper()} ADDRESS TO TRAVEL HANDS API")
         logging.info(f"Generated Address Type: {generated_address_type}")
         logging.info("=" * 80)
-        logging.info(f"Endpoint: {SAVE_ADDRESS_ENDPOINT}")
+        
+        # Dynamic endpoint using session user ID
+        save_address_endpoint = f"{TRAVEL_HANDS_API_BASE_URL}/api/vip/saveAddress/{session.user_id}"
+        logging.info(f"Endpoint: {save_address_endpoint}")
         logging.info(f"Payload: {json.dumps(payload, indent=2)}")
         
         # Use the same authorization token as VIP registration
-        auth_token = get_auth_token()
+        auth_token = get_auth_token(session)
+        logging.info(f"🔑 Auth token for API call: {auth_token[:20]}...")
         
         headers = {
             "Authorization": f"Bearer {auth_token}",
@@ -143,7 +153,7 @@ def save_address_to_api(address_data, address_category="Pickup", existing_types=
         
         # Make the API request
         response = requests.post(
-            SAVE_ADDRESS_ENDPOINT,
+            save_address_endpoint,
             json=payload,
             headers=headers,
             timeout=30
@@ -185,7 +195,7 @@ def save_address_to_api(address_data, address_category="Pickup", existing_types=
             "message": f"Unexpected error while saving {address_category.lower()} address: {str(e)}"
         }
 
-def search_volunteers_api(journey_data):
+def search_volunteers_api(session, journey_data):
     """Search for volunteers using Travel Hands API"""
     try:
         # Map journey reason to full description
@@ -222,15 +232,15 @@ def search_volunteers_api(journey_data):
             "jounreyDate": journey_data.get('journey_date', ''),
             "pickupTime": journey_data.get('pickup_time', ''),
             "journeyEndTime": "",
-            "journeyNote": "None",
+            "journeyNote": journey_data.get('journey_notes', 'None'),
             "totalTimeForVolunteer": journey_data.get('total_time_volunteer', '')
         }
         
         # Determine if journey is flexible
         is_flexible = "true" if journey_data.get('journey_reason') == "Flexible" else "false"
         
-        # Construct the API endpoint
-        volunteer_search_endpoint = f"{TRAVEL_HANDS_API_BASE_URL}/api/vip/volunteerSearch/330?isFlexible={is_flexible}"
+        # Construct the API endpoint - use dynamic user ID
+        volunteer_search_endpoint = f"{TRAVEL_HANDS_API_BASE_URL}/api/vip/volunteerSearch/{session.user_id}?isFlexible={is_flexible}"
         
         # Log the API request
         logging.info("=" * 80)
@@ -240,7 +250,8 @@ def search_volunteers_api(journey_data):
         logging.info(f"Payload: {json.dumps(payload, indent=2)}")
         
         # Use the same authorization token
-        auth_token = get_auth_token()
+        auth_token = get_auth_token(session)
+        logging.info(f"🔑 Auth token for search_volunteers_api API call: {auth_token[:20]}...")
         
         headers = {
             "Authorization": f"Bearer {auth_token}",
@@ -291,14 +302,16 @@ def search_volunteers_api(journey_data):
             "message": f"Unexpected error while searching for volunteers: {str(e)}"
         }
 
-def get_existing_addresses():
+def get_existing_addresses(session):
     """Fetch existing saved addresses for the user from Travel Hands API"""
     try:
-        # API endpoint to get existing addresses
-        get_addresses_endpoint = f"{TRAVEL_HANDS_API_BASE_URL}/api/vip/addresses/330"
+        # API endpoint to get existing addresses - use dynamic user ID
+        get_addresses_endpoint = f"{TRAVEL_HANDS_API_BASE_URL}/api/vip/addresses/{session.user_id}"
         
         # Use the same authorization token
-        auth_token = get_auth_token()
+        auth_token = get_auth_token(session)
+        logging.info(f"🔑 Auth token for get_existing_addresses API call: {auth_token[:20]}...")
+        logging.info(f"🌐 API endpoint: {get_addresses_endpoint}")
         
         headers = {
             "Authorization": f"Bearer {auth_token}",
@@ -437,7 +450,8 @@ def parse_journey_date(user_input):
     # Try different parsing strategies
     try:
         # First, try to parse with dateutil which handles most natural language formats
-        parsed_date = date_parser.parse(cleaned_input, fuzzy=True)
+        # Use dayfirst=True for UK date format (DD-MM-YYYY)
+        parsed_date = date_parser.parse(cleaned_input, fuzzy=True, dayfirst=True)
         
         # Convert to required format: dd-m-yyyy
         formatted_date = f"{parsed_date.day}-{parsed_date.month}-{parsed_date.year}"
@@ -701,6 +715,7 @@ def validate_journey_data_before_api(journey_data):
 
 # Streamlit UI - only run when file is executed directly
 if __name__ == "__main__":
+    import streamlit as st
     from speech_services import SpeechServices
     from travel_hands_client import TravelHandsClient
     
