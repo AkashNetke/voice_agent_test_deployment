@@ -4,6 +4,7 @@ Adapts the existing Streamlit journey booking logic to work with API sessions
 """
 
 import logging
+import json
 from typing import Dict, Any, Tuple
 from datetime import datetime
 from voice_agent.session_manager import JourneySession
@@ -14,15 +15,16 @@ import os
 sys.path.append(os.path.join(os.path.dirname(__file__), 'agent'))
 
 from voice_agent.agent.journey_booking import (
-    get_existing_addresses,
-    save_address_to_api,
-    search_volunteers_api,
-    format_addresses_list,
-    find_address_by_selection,
-    parse_journey_date,
+    get_existing_addresses, 
+    save_address_to_api, 
+    parse_journey_date, 
     parse_pickup_time,
+    search_volunteers_api,
+    find_address_by_selection,
+    format_addresses_list,
     format_postcode,
-    clean_address_input
+    clean_address_input,
+    validate_journey_data_before_api
 )
 
 logger = logging.getLogger(__name__)
@@ -307,7 +309,11 @@ class JourneyBookingService:
                 session.journey_step = "total_time_volunteer"
                 return "Thank you. Now, could you please provide the total time you expect the volunteer to spend on your journey? Please choose from: upto 30 minutes, upto 1 hour, or more than 1 hour."
             else:
-                return "I'm having trouble understanding the time format. Could you please provide the time in a clearer format? For example: '9:00 AM', '2:30 PM', or '14:30'."
+                # Check if user provided duration instead of time
+                if any(word in user_input.lower() for word in ['hours', 'hour', 'minutes', 'mins', 'hrs']):
+                    return "I need a specific pickup time, not a duration. For example, if you want to be picked up at 9 in the morning, say '9:00 AM' or '09:00'. What time would you like to be picked up?"
+                else:
+                    return "I'm having trouble understanding the time format. Could you please provide the time in a clearer format? For example: '9:00 AM', '2:30 PM', or '14:30'."
 
         elif session.journey_step == "total_time_volunteer":
             valid_times = ["upto 30 minutes", "upto 1 hour", "more than 1 hour"]
@@ -329,22 +335,44 @@ class JourneyBookingService:
             if standardized_time in valid_times:
                 session.journey_data["total_time_volunteer"] = standardized_time
 
+                # Validate journey data before searching for volunteers
+                validation_result = validate_journey_data_before_api(session.journey_data)
+                if not validation_result["valid"]:
+                    session.journey_step = "complete"
+                    return f"Journey booking incomplete: {validation_result['error']}. Please start a new journey."
+
                 # Search for volunteers
                 volunteer_search_result = search_volunteers_api(session.journey_data)
 
+                # Always mark journey as complete and provide journey details
+                session.journey_step = "complete"
+                
+                # Log the complete journey data for persistence tracking
+                logging.info("=" * 80)
+                logging.info("JOURNEY DATA COLLECTION COMPLETE")
+                logging.info("=" * 80)
+                logging.info(f"Journey Data: {json.dumps(session.journey_data, indent=2)}")
+                logging.info("=" * 80)
+                
+                pickup_address = session.journey_data.get('pickup_address_type', 'Selected pickup address')
+                dest_address = session.journey_data.get('dest_address_type', 'Selected destination address')
+                booking_date = session.journey_data.get('journey_date', 'N/A')
+                booking_time = session.journey_data.get('pickup_time', 'N/A')
+                
+                journey_summary = f"Journey Details Saved!\n\nPickup Address: {pickup_address}\nDestination Address: {dest_address}\nBooking Date: {booking_date}\nBooking Time: {booking_time}\n\n"
+
                 if volunteer_search_result["success"]:
                     session.journey_data["volunteers"] = volunteer_search_result.get("volunteers", [])
-                    session.journey_step = "complete"
-
-                    pickup_address = session.journey_data.get('pickup_address_type', 'Selected pickup address')
-                    dest_address = session.journey_data.get('dest_address_type', 'Selected destination address')
-                    booking_date = session.journey_data.get('journey_date', 'N/A')
-                    booking_time = session.journey_data.get('pickup_time', 'N/A')
-
-                    return f"Journey Booking Successful!\n\nPickup Address: {pickup_address}\nDestination Address: {dest_address}\nBooking Date: {booking_date}\nBooking Time: {booking_time}\n\nJourney booked successfully! You can start a new journey if needed."
+                    return journey_summary + "Journey booked successfully with volunteers found! You can start a new journey if needed."
                 else:
-                    session.journey_step = "complete"
-                    return "Problem searching for volunteers. Please try again!"
+                    # Check if it's a server-side error vs validation error
+                    error_response = volunteer_search_result.get("error", "")
+                    if "Authentication failed" in str(error_response) or "INTERNAL_SERVER_ERROR" in str(error_response):
+                        # Server-side error - journey data is still valid, just volunteer search failed
+                        return journey_summary + "Journey details have been saved successfully! However, volunteer search is temporarily unavailable due to a server issue. Please try searching for volunteers again later."
+                    else:
+                        # Other errors - could be validation issues
+                        return journey_summary + "Journey details saved, but there was an issue searching for volunteers. Please try again!"
             else:
                 return "Please choose from: upto 30 minutes, upto 1 hour, or more than 1 hour."
 

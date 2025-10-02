@@ -8,12 +8,126 @@ import base64
 import tempfile
 import requests
 import json
-from typing import Optional
+import struct
+import subprocess
+from typing import Optional, Dict
 import azure.cognitiveservices.speech as speechsdk
 from voice_agent.agent.speech_services import SpeechServices
 import logging
 
 logger = logging.getLogger(__name__)
+
+class AudioFormatAnalyzer:
+    """Analyzes audio format and provides conversion utilities"""
+    
+    def __init__(self):
+        self.supported_formats = {
+            'wav': b'RIFF',
+            'webm': b'\x1a\x45\xdf\xa3',
+            'ogg': b'OggS',
+            'mp3': b'ID3',
+            'mp4': b'ftyp',
+            'flac': b'fLaC'
+        }
+    
+    def analyze_audio_header(self, audio_data: bytes) -> Dict:
+        """Analyze audio data header to determine format"""
+        if len(audio_data) < 16:
+            return {"error": "Audio data too short for analysis"}
+        
+        header = audio_data[:16]
+        header_hex = header.hex()
+        
+        result = {
+            "header_bytes": header,
+            "header_hex": header_hex,
+            "size": len(audio_data),
+            "detected_format": "unknown"
+        }
+        
+        # Check against known formats
+        for format_name, signature in self.supported_formats.items():
+            if header.startswith(signature):
+                result["detected_format"] = format_name
+                break
+            
+        # Special case for WAV files
+        if header.startswith(b'RIFF') and b'WAVE' in audio_data[:20]:
+            result["detected_format"] = "wav"
+            result["is_valid_wav"] = True
+        else:
+            result["is_valid_wav"] = False
+            
+        return result
+    
+    def convert_to_wav_ffmpeg(self, input_data: bytes) -> Optional[bytes]:
+        """Convert audio data to WAV format using FFmpeg"""
+        input_temp = None
+        output_temp = None
+        
+        try:
+            # Create temporary input file
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as f:
+                input_temp = f.name
+                f.write(input_data)
+            
+            # Create temporary output file
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
+                output_temp = f.name
+            
+            # FFmpeg command to convert to WAV format suitable for Azure Speech Services
+            # Azure prefers: 16kHz, 16-bit, mono PCM WAV
+            cmd = [
+                'ffmpeg', '-y',  # -y to overwrite output file
+                '-i', input_temp,  # Input file
+                '-acodec', 'pcm_s16le',  # 16-bit PCM
+                '-ar', '16000',  # 16kHz sample rate
+                '-ac', '1',  # Mono
+                '-f', 'wav',  # WAV format
+                output_temp
+            ]
+            
+            logger.info(f"🔄 Running FFmpeg conversion: {' '.join(cmd)}")
+            
+            # Run FFmpeg
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            
+            if result.returncode == 0:
+                # Read converted audio
+                with open(output_temp, 'rb') as f:
+                    converted_data = f.read()
+                
+                logger.info(f"✅ FFmpeg conversion successful: {len(converted_data)} bytes")
+                return converted_data
+            else:
+                logger.error(f"❌ FFmpeg conversion failed:")
+                logger.error(f"stdout: {result.stdout}")
+                logger.error(f"stderr: {result.stderr}")
+                return None
+                
+        except subprocess.TimeoutExpired:
+            logger.error("❌ FFmpeg conversion timed out")
+            return None
+        except FileNotFoundError:
+            logger.error("❌ FFmpeg not found. Please install FFmpeg")
+            return None
+        except Exception as e:
+            logger.error(f"❌ FFmpeg conversion error: {str(e)}")
+            return None
+        finally:
+            # Clean up temporary files
+            for temp_file in [input_temp, output_temp]:
+                if temp_file and os.path.exists(temp_file):
+                    try:
+                        os.unlink(temp_file)
+                    except Exception as e:
+                        logger.warning(f"⚠️ Failed to clean up {temp_file}: {e}")
+
 
 class AudioProcessor:
     """
@@ -80,6 +194,7 @@ class AudioProcessor:
         """
         Convert Base64-encoded audio to text using Azure Speech-to-Text REST API.
         This approach follows Microsoft's recommendations for better compatibility.
+        Now includes automatic format detection and conversion.
         """
         if not base64_audio_data or not base64_audio_data.strip():
             logger.info("🔇 Empty audio data - treating as silence")
@@ -102,6 +217,29 @@ class AudioProcessor:
                 logger.info("🔇 Audio data too small - likely silence or noise")
                 return ""  # Return empty string for tiny audio
 
+            # Analyze audio format and convert if needed
+            analyzer = AudioFormatAnalyzer()
+            format_info = analyzer.analyze_audio_header(decoded_audio_data)
+            
+            logger.info(f"🔍 Detected audio format: {format_info['detected_format']}")
+            
+            # Convert to WAV if not already in WAV format
+            if not format_info.get('is_valid_wav', False):
+                logger.info("🔄 Converting audio to WAV format for Azure compatibility...")
+                converted_data = analyzer.convert_to_wav_ffmpeg(decoded_audio_data)
+                if converted_data:
+                    decoded_audio_data = converted_data
+                    logger.info("✅ Audio converted to WAV successfully")
+                    
+                    # Verify conversion
+                    verify_info = analyzer.analyze_audio_header(decoded_audio_data)
+                    logger.info(f"🔍 Post-conversion format: {verify_info['detected_format']}")
+                else:
+                    logger.error("❌ Audio conversion failed")
+                    return ""
+            else:
+                logger.info("✅ Audio is already in WAV format")
+
             # Create temporary file for debugging
             temp_filename = None
             try:
@@ -113,22 +251,22 @@ class AudioProcessor:
                 
                 # Save debug copy if enabled
                 if self.debug_mode:
-                    debug_file = os.path.join(self.debug_dir, f"input_audio_{os.path.basename(temp_filename)}")
+                    debug_file = os.path.join(self.debug_dir, f"processed_audio_{os.path.basename(temp_filename)}")
                     with open(debug_file, 'wb') as f:
                         f.write(decoded_audio_data)
-                    logger.info(f"🔍 Debug: Saved audio copy to {debug_file}")
+                    logger.info(f"🔍 Debug: Saved processed audio to {debug_file}")
 
-                # Check if it looks like a valid WAV file
+                # Check final WAV file format
                 if len(decoded_audio_data) >= 16:
                     header = decoded_audio_data[:16]
-                    logger.info(f"🔍 Audio file size on disk: {os.path.getsize(temp_filename)} bytes")
-                    logger.info(f"🔍 Audio file header (first 16 bytes): {header}")
-                    logger.info(f"🔍 Header as hex: {header.hex()}")
+                    logger.info(f"🔍 Final audio file size: {os.path.getsize(temp_filename)} bytes")
+                    logger.info(f"🔍 Final audio header (first 16 bytes): {header}")
+                    logger.info(f"🔍 Final header as hex: {header.hex()}")
                     
                     if header.startswith(b'RIFF') and b'WAVE' in header:
-                        logger.info("✅ Audio file appears to be a valid WAV file")
+                        logger.info("✅ Final audio file is a valid WAV file")
                     else:
-                        logger.warning("⚠️ Audio file may not be a valid WAV format")
+                        logger.warning("⚠️ Final audio file may still not be a valid WAV format")
 
                 # Use Azure Speech-to-Text REST API
                 return self._perform_azure_rest_stt(decoded_audio_data)
