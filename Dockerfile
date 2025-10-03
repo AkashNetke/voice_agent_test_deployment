@@ -55,6 +55,8 @@ RUN apt-get update && apt-get install -y \
     libc6 \
     libgcc-s1 \
     libstdc++6 \
+    # Required for audio processing and conversion
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user for security
