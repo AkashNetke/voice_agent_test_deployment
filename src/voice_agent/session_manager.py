@@ -27,6 +27,9 @@ class JourneySession:
     journey_messages: list = field(default_factory=list)
     existing_address_types: list = field(default_factory=list)
     greeting_shown: bool = False
+    
+    # AI booking service attributes
+    missing_fields: list = field(default_factory=list)
 
     def update_activity(self):
         """Update last activity timestamp"""

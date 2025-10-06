@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 from voice_agent.agent.speech_services import SpeechServices
 from voice_agent.audio_utils import AudioProcessor
+from voice_agent.enhanced_langgraph_agent import EnhancedLangGraphBookingAgent
 
 class MessageType(Enum):
     USER_VOICE_MESSAGE = "user-voice-message"
@@ -30,3 +31,4 @@ class Response(BaseModel):
 class AppState:
     speech_services: Optional[SpeechServices]
     audio_processor: Optional[AudioProcessor]
+    enhanced_langgraph_agent: Optional[EnhancedLangGraphBookingAgent] = None

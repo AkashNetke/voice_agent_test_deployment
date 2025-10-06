@@ -101,6 +101,95 @@ Generate only the address type, nothing else:
 # Travel Hands API configuration
 TRAVEL_HANDS_API_BASE_URL = "https://travelhands-test-e5a3h9akcfevhwc4.uksouth-01.azurewebsites.net"
 
+def save_address_to_api_simple(session, address_type, address_line1, address_line2, postcode, city="London", special_notes=""):
+    """Save address data to Travel Hands API with direct input (no LLM generation)"""
+    try:
+        # Map input data directly to API payload format
+        payload = {
+            "addressType": address_type,
+            "addressLine1": address_line1,
+            "addressLine2": address_line2,
+            "cityName": city,
+            "postCode": postcode,
+            "additionalComment": special_notes
+        }
+        
+        # Log the API request
+        logging.info("=" * 80)
+        logging.info("SAVING ADDRESS TO TRAVEL HANDS API (SIMPLE VERSION)")
+        logging.info(f"Address Type: {address_type}")
+        logging.info("=" * 80)
+        
+        # Dynamic endpoint using session user ID
+        save_address_endpoint = f"{TRAVEL_HANDS_API_BASE_URL}/api/vip/saveAddress/{session.user_id}"
+        logging.info(f"Endpoint: {save_address_endpoint}")
+        logging.info(f"Payload: {json.dumps(payload, indent=2)}")
+        
+        # Use the same authorization token as VIP registration
+        auth_token = get_auth_token(session)
+        logging.info(f"🔑 Auth token for API call: {auth_token[:20]}...")
+        
+        headers = {
+            "Authorization": f"Bearer {auth_token}",
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+        }
+        
+        # Log headers (without exposing the full token)
+        logging.info("Headers:")
+        logging.info(f"  Authorization: Bearer {auth_token[:20]}...")
+        logging.info(f"  Content-Type: {headers['Content-Type']}")
+        
+        # Make the API request
+        response = requests.post(
+            save_address_endpoint,
+            json=payload,
+            headers=headers,
+            timeout=30
+        )
+        
+        # Log the response
+        logging.info(f"Response Status: {response.status_code}")
+        logging.info(f"Response Body: {response.text}")
+        logging.info("=" * 80)
+        
+        if response.status_code in [200, 201]:
+            return {
+                "success": True,
+                "message": "Address saved successfully!",
+                "response": response.json() if response.text else {},
+                "address_id": response.json().get('addressId') if response.text else None,
+                "address_type": address_type
+            }
+        else:
+            return {
+                "success": False,
+                "message": f"Failed to save address. Status: {response.status_code}",
+                "error": response.text
+            }
+    
+    except requests.exceptions.Timeout:
+        logging.error("❌ Timeout error while saving address")
+        return {
+            "success": False,
+            "message": "Request timeout while saving address. Please try again.",
+            "error": "Timeout"
+        }
+    except requests.exceptions.RequestException as e:
+        logging.error(f"❌ Request error while saving address: {str(e)}")
+        return {
+            "success": False,
+            "message": f"Network error while saving address: {str(e)}",
+            "error": str(e)
+        }
+    except Exception as e:
+        logging.error(f"❌ Unexpected error while saving address: {str(e)}")
+        return {
+            "success": False,
+            "message": f"Unexpected error while saving address: {str(e)}",
+            "error": str(e)
+        }
+
 def save_address_to_api(session, address_data, address_category="Pickup", existing_types=None):
     """Save address data to Travel Hands API with LLM-generated address type"""
     try:
@@ -119,11 +208,15 @@ def save_address_to_api(session, address_data, address_category="Pickup", existi
         payload = {
             "addressType": generated_address_type,  # LLM-generated descriptive type
             "addressLine1": address_data.get('address_line1', ''),
-            "addressLine2": address_data.get('address_line2', ''),
             "cityName": address_data.get('city', 'London'),
             "postCode": address_data.get('postcode', ''),
             "additionalComment": address_data.get('special_notes', '')
         }
+        
+        # Only include addressLine2 if it's not empty
+        address_line2 = address_data.get('address_line2', '')
+        if address_line2 and address_line2.strip():
+            payload["addressLine2"] = address_line2
         
         # Log the API request
         logging.info("=" * 80)
@@ -222,10 +315,30 @@ def search_volunteers_api(session, journey_data):
                 journey_data['pickup_time'] = "09:00:00"
                 logging.warning(f"Failed to parse pickup_time '{pickup_time}', using default '09:00:00'")
         
+        # Validate required address IDs before making API call
+        pickup_address_id = journey_data.get('pickup_address_id')
+        dest_address_id = journey_data.get('dest_address_id')
+        
+        if not pickup_address_id:
+            logging.error("Missing pickup_address_id - cannot search for volunteers")
+            return {
+                "success": False,
+                "message": "Pickup address not found. Please provide a valid pickup address.",
+                "volunteers": []
+            }
+        
+        if not dest_address_id:
+            logging.error("Missing dest_address_id - cannot search for volunteers")
+            return {
+                "success": False,
+                "message": "Destination address not found. Please provide a valid destination address.",
+                "volunteers": []
+            }
+        
         # Construct the payload
         payload = {
-            "pickupAddressId": journey_data.get('pickup_address_id'),
-            "destinationAddressId": journey_data.get('dest_address_id'),
+            "pickupAddressId": pickup_address_id,
+            "destinationAddressId": dest_address_id,
             "pickupAdressName": journey_data.get('pickup_address_type', ''),
             "destinationAdressName": journey_data.get('dest_address_type', ''),
             "journeyReason": journey_reason_full,
@@ -414,15 +527,25 @@ def find_address_by_selection(addresses, user_input):
         logging.info(f"DEBUG: Could not parse '{cleaned_input}' as number")
         pass
     
-    # Try to match by address type or partial address type
+    # Try to match by address type or partial address type (more strict matching)
     for addr in limited_addresses:
         address_type = addr.get('addressType', '').lower()
         address_line1 = addr.get('addressLine1', '').lower()
+        
+        # More strict matching to avoid false positives
+        # Only match if the user input is a significant part of the address
         if (cleaned_input in address_type or 
             address_type in cleaned_input or
             cleaned_input in address_line1):
-            logging.info(f"DEBUG: Found address by text match: {addr.get('addressType')}")
-            return addr
+            # Additional check: ensure it's not just a generic word match
+            # Avoid matching "museum" against "Science Museum" if the user said "Science Museum"
+            if len(cleaned_input) >= 3 and (
+                cleaned_input == address_type or  # Exact type match
+                address_type in cleaned_input or  # Type is part of user input
+                (cleaned_input in address_line1 and len(cleaned_input) > len(address_line1) * 0.3)  # Significant part of address
+            ):
+                logging.info(f"DEBUG: Found address by text match: {addr.get('addressType')}")
+                return addr
     
     # Try to match by address ID
     try:
