@@ -20,7 +20,6 @@ def get_auth_token(session=None):
     # Use token from session if available
     if session and hasattr(session, 'auth_token') and session.auth_token:
         logging.info(f"🔑 SESSION TOKEN RECEIVED: {session.auth_token}")
-        logging.info(f"🔑 SESSION TOKEN LENGTH: {len(session.auth_token)} characters")
         return session.auth_token
     
     # No fallback - return None if no session token
@@ -128,7 +127,6 @@ def save_address_to_api_simple(session, address_type, address_line1, address_lin
             }
         
         logging.info(f"🔑 API CALL TOKEN: {auth_token}")
-        logging.info(f"🔑 API CALL TOKEN LENGTH: {len(auth_token)} characters")
         logging.info(f"🔑 Auth token for API call: {auth_token[:20]}...")
         
         headers = {
@@ -236,7 +234,6 @@ def save_address_to_api(session, address_data, address_category="Pickup", existi
             }
         
         logging.info(f"🔑 API CALL TOKEN: {auth_token}")
-        logging.info(f"🔑 API CALL TOKEN LENGTH: {len(auth_token)} characters")
         logging.info(f"🔑 Auth token for API call: {auth_token[:20]}...")
         
         headers = {
@@ -378,7 +375,6 @@ def search_volunteers_api(session, journey_data):
             }
         
         logging.info(f"🔑 API CALL TOKEN: {auth_token}")
-        logging.info(f"🔑 API CALL TOKEN LENGTH: {len(auth_token)} characters")
         logging.info(f"🔑 Auth token for search_volunteers_api API call: {auth_token[:20]}...")
         
         headers = {
@@ -445,8 +441,6 @@ def get_existing_addresses(session):
                 "addresses": []
             }
         
-        logging.info(f"🔑 API CALL TOKEN: {auth_token}")
-        logging.info(f"🔑 API CALL TOKEN LENGTH: {len(auth_token)} characters")
         logging.info(f"🔑 Auth token for get_existing_addresses API call: {auth_token[:20]}...")
         logging.info(f"🌐 API endpoint: {get_addresses_endpoint}")
         

@@ -312,15 +312,15 @@ When processing addresses:
 4. Use the correct address_id and address_line when calling search_volunteers_and_save_journey
 
 CRITICAL: When extracting address IDs from get_saved_addresses output:
-- The API returns JSON format: [{"addressId":502,"addressType":"Home","addressLine1":"Lee High Road, Hither Green","addressLine2":"Mercator Estate, Greater London","cityName":"London","postCode":"SE13 5HE","additionalComment":"none"}]
+- The API returns JSON format: [{"addressId":502,"addressType":"Home","addressLine1":"","addressLine2":"Mercator Estate, Greater London","cityName":"London","postCode":"SE13 5HE","additionalComment":"none"}]
 - Extract the exact "addressId" value from the JSON object
 - Match the "addressType" to user input (e.g., "Home" for "home", "School" for "school")
 - Use the exact "addressId" number for the address_id parameter
 - Do NOT make up or guess address IDs
 
-Example: If user says "home" and API returns [{"addressId":502,"addressType":"Home","addressLine1":"",...}], extract addressId 502 for pickup_address_id.
+Example: If user says pick up from "home" and API returns [{"addressId":502,"addressType":"Home","addressLine1":"",...}], extract addressId 502 for pickup_address_id.
 
-Example: If user says "school" and API returns [{"addressId":516,"addressType":"School","addressLine1":"Senate House, Mallet Street, London",...}], extract addressId 516 for destination_address_id.
+Example: If user says destination is "school" and API returns [{"addressId":516,"addressType":"School","addressLine1":"Senate House, Mallet Street, London",...}], extract addressId 516 for destination_address_id.
 
 CONFIRMATION WORKFLOW:
 When all required fields are collected:
