@@ -16,23 +16,16 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 
 def get_auth_token(session=None):
-    """Get authentication token from session, environment, or fallback"""
+    """Get authentication token from session"""
     # Use token from session if available
     if session and hasattr(session, 'auth_token') and session.auth_token:
-        logging.info(f"🔑 Using session auth token: {session.auth_token[:20]}...")
+        logging.info(f"🔑 SESSION TOKEN RECEIVED: {session.auth_token}")
+        logging.info(f"🔑 SESSION TOKEN LENGTH: {len(session.auth_token)} characters")
         return session.auth_token
     
-    # First try to get from environment variable
-    token = os.getenv("TRAVEL_HANDS_AUTH_TOKEN")
-    if token:
-        logging.info(f"🔑 Using environment auth token: {token[:20]}...")
-        return token
-    
-    # Fallback to hardcoded token (should be updated)
-    # TODO: Implement proper authentication flow
-    fallback_token = "eyJhbGciOiJIUzUxMiJ9.eyJzdWIiOiJ0ZXN0dmlwQGdtYWlsLmNvbSIsIm5hbWUiOiJUb20iLCJpZCI6NDUyLCJyb2xlIjoiUk9MRV9WSVAiLCJleHAiOjE3NjAxMTAzMTd9.klAKbXufUetArABUXReg8fRw4psffXn45xHa2r6WED22wRnqAjIhFcf6P1lFcHintUiBl_oHFmAEM8p5aF5BXA"
-    logging.info(f"🔑 Using fallback auth token: {fallback_token[:20]}...")
-    return fallback_token
+    # No fallback - return None if no session token
+    logging.error("❌ No valid session auth token available")
+    return None
 
 # Initialize Azure OpenAI for address type generation
 def get_azure_openai_client():
@@ -127,6 +120,15 @@ def save_address_to_api_simple(session, address_type, address_line1, address_lin
         
         # Use the same authorization token as VIP registration
         auth_token = get_auth_token(session)
+        if not auth_token:
+            return {
+                "success": False,
+                "error": "No valid authentication token available",
+                "address_id": None
+            }
+        
+        logging.info(f"🔑 API CALL TOKEN: {auth_token}")
+        logging.info(f"🔑 API CALL TOKEN LENGTH: {len(auth_token)} characters")
         logging.info(f"🔑 Auth token for API call: {auth_token[:20]}...")
         
         headers = {
@@ -213,11 +215,6 @@ def save_address_to_api(session, address_data, address_category="Pickup", existi
             "additionalComment": address_data.get('special_notes', '')
         }
         
-        # Only include addressLine2 if it's not empty
-        address_line2 = address_data.get('address_line2', '')
-        if address_line2 and address_line2.strip():
-            payload["addressLine2"] = address_line2
-        
         # Log the API request
         logging.info("=" * 80)
         logging.info(f"SAVING {address_category.upper()} ADDRESS TO TRAVEL HANDS API")
@@ -231,6 +228,15 @@ def save_address_to_api(session, address_data, address_category="Pickup", existi
         
         # Use the same authorization token as VIP registration
         auth_token = get_auth_token(session)
+        if not auth_token:
+            return {
+                "success": False,
+                "error": "No valid authentication token available",
+                "address_id": None
+            }
+        
+        logging.info(f"🔑 API CALL TOKEN: {auth_token}")
+        logging.info(f"🔑 API CALL TOKEN LENGTH: {len(auth_token)} characters")
         logging.info(f"🔑 Auth token for API call: {auth_token[:20]}...")
         
         headers = {
@@ -364,6 +370,15 @@ def search_volunteers_api(session, journey_data):
         
         # Use the same authorization token
         auth_token = get_auth_token(session)
+        if not auth_token:
+            return {
+                "success": False,
+                "error": "No valid authentication token available",
+                "volunteers": []
+            }
+        
+        logging.info(f"🔑 API CALL TOKEN: {auth_token}")
+        logging.info(f"🔑 API CALL TOKEN LENGTH: {len(auth_token)} characters")
         logging.info(f"🔑 Auth token for search_volunteers_api API call: {auth_token[:20]}...")
         
         headers = {
@@ -423,6 +438,15 @@ def get_existing_addresses(session):
         
         # Use the same authorization token
         auth_token = get_auth_token(session)
+        if not auth_token:
+            return {
+                "success": False,
+                "error": "No valid authentication token available",
+                "addresses": []
+            }
+        
+        logging.info(f"🔑 API CALL TOKEN: {auth_token}")
+        logging.info(f"🔑 API CALL TOKEN LENGTH: {len(auth_token)} characters")
         logging.info(f"🔑 Auth token for get_existing_addresses API call: {auth_token[:20]}...")
         logging.info(f"🌐 API endpoint: {get_addresses_endpoint}")
         
@@ -527,25 +551,15 @@ def find_address_by_selection(addresses, user_input):
         logging.info(f"DEBUG: Could not parse '{cleaned_input}' as number")
         pass
     
-    # Try to match by address type or partial address type (more strict matching)
+    # Try to match by address type or partial address type
     for addr in limited_addresses:
         address_type = addr.get('addressType', '').lower()
         address_line1 = addr.get('addressLine1', '').lower()
-        
-        # More strict matching to avoid false positives
-        # Only match if the user input is a significant part of the address
         if (cleaned_input in address_type or 
             address_type in cleaned_input or
             cleaned_input in address_line1):
-            # Additional check: ensure it's not just a generic word match
-            # Avoid matching "museum" against "Science Museum" if the user said "Science Museum"
-            if len(cleaned_input) >= 3 and (
-                cleaned_input == address_type or  # Exact type match
-                address_type in cleaned_input or  # Type is part of user input
-                (cleaned_input in address_line1 and len(cleaned_input) > len(address_line1) * 0.3)  # Significant part of address
-            ):
-                logging.info(f"DEBUG: Found address by text match: {addr.get('addressType')}")
-                return addr
+            logging.info(f"DEBUG: Found address by text match: {addr.get('addressType')}")
+            return addr
     
     # Try to match by address ID
     try:
