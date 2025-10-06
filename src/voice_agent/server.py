@@ -68,6 +68,11 @@ def root():
         "message": "Voice Agent API is running",
     }
 
+@app.get("/health")
+def health_check():
+    """Health check endpoint"""
+    return {"status": "healthy"}
+
 @app.post("/message", response_model=Response)
 def voice_agent_echo(payload: Request = Body(...)):
     return Response(
