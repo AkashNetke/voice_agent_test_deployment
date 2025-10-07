@@ -61,6 +61,26 @@ jobs:
           exit 1
         fi
 
+        if [ -z "${{ secrets.AZURE_SPEECH_KEY_PROD }}" ]; then
+          echo "::error::Required secret AZURE_SPEECH_KEY_PROD is not set"
+          exit 1
+        fi
+
+        if [ -z "${{ secrets.COSMOS_DB_DATABASE_PROD }}" ]; then
+          echo "::error::Required secret COSMOS_DB_DATABASE_PROD is not set"
+          exit 1
+        fi
+
+        if [ -z "${{ secrets.COSMOS_DB_ENDPOINT_PROD }}" ]; then
+          echo "::error::Required secret COSMOS_DB_ENDPOINT_PROD is not set"
+          exit 1
+        fi
+
+        if [ -z "${{ secrets.COSMOS_DB_KEY_PROD }}" ]; then
+          echo "::error::Required secret COSMOS_DB_KEY_PROD is not set"
+          exit 1
+        fi
+
         echo "All required secrets are set"
 
     - name: Log in to Azure
@@ -76,6 +96,10 @@ jobs:
           --image ${{ env.REGISTRY_URL }}/${{ env.IMAGE_NAME }}:latest \
           --replace-env-vars "AZURE_OPENAI_ENDPOINT=${{ secrets.AZURE_OPENAI_ENDPOINT_PROD }}" \
             "AZURE_SPEECH_REGION=${{ secrets.AZURE_SPEECH_REGION_PROD }}" \
+            "AZURE_SPEECH_KEY=${{ secrets.AZURE_SPEECH_KEY_PROD }}" \
             "AZURE_OPENAI_API_KEY=${{ secrets.AZURE_OPENAI_API_KEY_PROD }}" \
             "AZURE_OPENAI_API_VERSION=${{ secrets.AZURE_OPENAI_API_VERSION_PROD }}" \
-            "AZURE_OPENAI_DEPLOYMENT_NAME=${{ secrets.AZURE_OPENAI_DEPLOYMENT_NAME_PROD }}"
+            "AZURE_OPENAI_DEPLOYMENT_NAME=${{ secrets.AZURE_OPENAI_DEPLOYMENT_NAME_PROD }}" \
+            "COSMOS_DB_DATABASE=${{ secrets.COSMOS_DB_DATABASE_PROD }}" \
+            "COSMOS_DB_ENDPOINT=${{ secrets.COSMOS_DB_ENDPOINT_PROD }}" \
+            "COSMOS_DB_KEY=${{ secrets.COSMOS_DB_KEY_PROD }}"

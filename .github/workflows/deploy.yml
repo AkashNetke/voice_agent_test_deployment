@@ -65,6 +65,21 @@ jobs:
           exit 1
         fi
 
+        if [ -z "${{ secrets.COSMOS_DB_DATABASE }}" ]; then
+          echo "::error::Required secret COSMOS_DB_DATABASE is not set"
+          exit 1
+        fi
+
+        if [ -z "${{ secrets.COSMOS_DB_ENDPOINT }}" ]; then
+          echo "::error::Required secret COSMOS_DB_ENDPOINT is not set"
+          exit 1
+        fi
+
+        if [ -z "${{ secrets.COSMOS_DB_KEY }}" ]; then
+          echo "::error::Required secret COSMOS_DB_KEY is not set"
+          exit 1
+        fi
+
         echo "All required secrets are set"
 
     - name: Log in to Azure
@@ -101,4 +116,7 @@ jobs:
             "AZURE_SPEECH_KEY=${{ secrets.AZURE_SPEECH_KEY }}" \
             "AZURE_OPENAI_API_KEY=${{ secrets.AZURE_OPENAI_API_KEY }}" \
             "AZURE_OPENAI_API_VERSION=${{ secrets.AZURE_OPENAI_API_VERSION }}" \
-            "AZURE_OPENAI_DEPLOYMENT_NAME=${{ secrets.AZURE_OPENAI_DEPLOYMENT_NAME }}"
+            "AZURE_OPENAI_DEPLOYMENT_NAME=${{ secrets.AZURE_OPENAI_DEPLOYMENT_NAME }}" \
+            "COSMOS_DB_DATABASE=${{ secrets.COSMOS_DB_DATABASE }}" \
+            "COSMOS_DB_ENDPOINT=${{ secrets.COSMOS_DB_ENDPOINT }}" \
+            "COSMOS_DB_KEY=${{ secrets.COSMOS_DB_KEY }}"
