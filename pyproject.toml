@@ -21,6 +21,7 @@ uvicorn = {extras = ["standard"], version = "^0.35.0"}
 pydantic = "^2.11.7"
 "azure-cosmos" = "^4.9.0"
 langchain-azure-ai = "^0.1.5"
+langgraph = "^0.6.8"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.4.2"
