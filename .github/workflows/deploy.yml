@@ -84,19 +84,16 @@ jobs:
         # Build the Docker image
         docker build -t ${{ env.REGISTRY_URL }}/${{ env.IMAGE_NAME }}:${{ github.sha }} .
 
-        # Tag the built image with 'latest'
-        docker tag ${{ env.REGISTRY_URL }}/${{ env.IMAGE_NAME }}:${{ github.sha }} ${{ env.REGISTRY_URL }}/${{ env.IMAGE_NAME }}:latest
-
-        # Push latest & Github SHA tags to ACR
+        # Push image to ACR
         docker push ${{ env.REGISTRY_URL }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-        docker push ${{ env.REGISTRY_URL }}/${{ env.IMAGE_NAME }}:latest
 
     - name: Deploy to Azure Container Apps
       run: |
         az containerapp update \
           --name ${{ env.CONTAINER_APP_NAME }} \
           --resource-group ${{ env.RESOURCE_GROUP }} \
-          --image ${{ env.REGISTRY_URL }}/${{ env.IMAGE_NAME }}:latest \
+          --image ${{ env.REGISTRY_URL }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+          --revision-suffix ${{ github.sha }} \
           --replace-env-vars "AZURE_OPENAI_ENDPOINT=${{ secrets.AZURE_OPENAI_ENDPOINT }}" \
             "AZURE_SPEECH_REGION=${{ secrets.AZURE_SPEECH_REGION }}" \
             "AZURE_SPEECH_KEY=${{ secrets.AZURE_SPEECH_KEY }}" \
