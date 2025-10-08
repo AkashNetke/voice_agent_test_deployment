@@ -189,3 +189,7 @@ pickup_time_*.py
 # Analysis files
 *_analysis.py
 langchain_*.py
+
+# Streamlit test files (development/testing only)
+streamlit_*.py
+tests/streamlit_*.py
