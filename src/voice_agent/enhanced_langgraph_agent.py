@@ -311,15 +311,15 @@ When processing addresses:
 4. Use the correct address_id and address_line when calling search_volunteers_and_save_journey
 
 CRITICAL: When extracting address IDs from get_saved_addresses output:
-- The API returns JSON format: [{"addressId":502,"addressType":"Home","addressLine1":"","addressLine2":"Mercator Estate, Greater London","cityName":"London","postCode":"SE13 5HE","additionalComment":"none"}]
+- The API returns JSON format: [{{"addressId":502,"addressType":"Home","addressLine1":"","addressLine2":"Mercator Estate, Greater London","cityName":"London","postCode":"SE13 5HE","additionalComment":"none"}}]
 - Extract the exact "addressId" value from the JSON object
 - Match the "addressType" to user input (e.g., "Home" for "home", "School" for "school")
 - Use the exact "addressId" number for the address_id parameter
 - Do NOT make up or guess address IDs
 
-Example: If user says pick up from "home" and API returns [{"addressId":502,"addressType":"Home","addressLine1":"",...}], extract addressId 502 for pickup_address_id.
+Example: If user says pick up from "home" and API returns [{{"addressId":502,"addressType":"Home","addressLine1":"",...}}], extract addressId 502 for pickup_address_id.
 
-Example: If user says destination is "school" and API returns [{"addressId":516,"addressType":"School","addressLine1":"Senate House, Mallet Street, London",...}], extract addressId 516 for destination_address_id.
+Example: If user says destination is "school" and API returns [{{"addressId":516,"addressType":"School","addressLine1":"Senate House, Mallet Street, London",...}}], extract addressId 516 for destination_address_id.
 
 CONFIRMATION WORKFLOW:
 When all required fields are collected:
@@ -412,7 +412,7 @@ IMPORTANT:
 4. Don't ask for information that has already been provided
 5. Build upon previous conversation to collect missing information progressively
 6. If user mentions journey importance (flexible, important, urgent), use extract_journey_reason tool
-7. For addresses: Use get_saved_addresses to get addresses with IDs and address lines, then use AI reasoning to match user input and extract both the correct address ID AND address line. CRITICAL: The API returns JSON format [{"addressId":502,"addressType":"Home","addressLine1":"n",...}] - extract the exact "addressId" value from the JSON object, do not make up IDs
+7. For addresses: Use get_saved_addresses to get addresses with IDs and address lines, then use AI reasoning to match user input and extract both the correct address ID AND address line. CRITICAL: The API returns JSON format [{{"addressId":502,"addressType":"Home","addressLine1":"n",...}}] - extract the exact "addressId" value from the JSON object, do not make up IDs
 8. If ALL required fields are complete, verify all the journey details with the user and ask for confirmation before calling search_volunteers_and_save_journey tool
 9. Always ask about journey notes - if user hasn't provided any notes, ask if they want to add any comments or special instructions
 10. When user confirms (says "yes", "looks good", "thanks", etc.), immediately call search_volunteers_and_save_journey tool
