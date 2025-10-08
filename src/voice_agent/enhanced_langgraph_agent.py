@@ -188,6 +188,9 @@ Respond with ONLY the agent name (general_agent, booking_agent, status_agent, or
                 next_agent = "general_agent"
                 logger.warning(f"Invalid routing decision: {next_agent}, defaulting to general_agent")
 
+            # Log routing decision
+            logger.info(f"🎯 SUPERVISOR ROUTING: User input: '{user_input[:100]}...' → Routing to: {next_agent}")
+
             # Update routing history
             routing_history = state.get("routing_history", [])
             routing_history.append(f"supervising_chatbot -> {next_agent}")
@@ -219,6 +222,7 @@ Respond with ONLY the agent name (general_agent, booking_agent, status_agent, or
         """Handle general greetings and questions"""
 
         try:
+            logger.info("🤖 GENERAL AGENT: Processing request")
             messages = state.get("messages", [])
             latest_message = messages[-1] if messages else HumanMessage(content="Hello")
             user_input = latest_message.content if hasattr(latest_message, 'content') else str(latest_message)
@@ -239,6 +243,8 @@ Respond with ONLY the agent name (general_agent, booking_agent, status_agent, or
             response_content = response.content if response and hasattr(response, 'content') else "I'm here to help you with your journey booking."
             updated_messages = messages + [{"role": "assistant", "content": response_content}]
 
+            logger.info(f"✅ GENERAL AGENT RESPONSE: {response_content[:150]}...")
+
             return self._update_state(state, {
                 "messages": updated_messages,
                 "current_agent": "supervising_chatbot",
@@ -258,10 +264,12 @@ Respond with ONLY the agent name (general_agent, booking_agent, status_agent, or
         start_time = datetime.now().timestamp()
 
         try:
+            logger.info("📝 BOOKING AGENT: Processing booking request")
             messages = state.get("messages", [])
             latest_message = messages[-1] if messages else HumanMessage(content="I want to book a journey")
             user_input = latest_message.content if hasattr(latest_message, 'content') else str(latest_message)
             user_context = state.get("user_context", {})
+            logger.info(f"📝 BOOKING AGENT INPUT: '{user_input[:100]}...'")
 
             # Get user credentials for tools
             user_id = user_context.get("user_id")
@@ -444,6 +452,8 @@ Process the user's booking request and collect any missing information.
             else:
                 response_text = "I can help you book a journey. What would you like to do?"
 
+            logger.info(f"✅ BOOKING AGENT RESPONSE: {response_text[:150]}...")
+
             # Add response to messages
             updated_messages = messages + [{"role": "assistant", "content": response_text}]
 
@@ -455,6 +465,7 @@ Process the user's booking request and collect any missing information.
 
         except Exception as e:
             logger.error(f"❌ Error in booking agent: {str(e)}")
+            logger.error(f"❌ Full error traceback:", exc_info=True)
             return self._update_state(state, {
                 "messages": state.get("messages", []) + [{"role": "assistant", "content": "I can help you book a journey. What would you like to do?"}],
                 "current_agent": "supervising_chatbot"
@@ -464,6 +475,7 @@ Process the user's booking request and collect any missing information.
         """Handle booking status inquiries"""
 
         try:
+            logger.info("📊 STATUS AGENT: Processing status request")
             messages = state.get("messages", [])
             latest_message = messages[-1] if messages else HumanMessage(content="What's my booking status?")
             user_input = latest_message.content if hasattr(latest_message, 'content') else str(latest_message)
@@ -514,6 +526,8 @@ Help the user with their booking status.
             else:
                 response_text = "I can help you with journey status. What would you like to know?"
 
+            logger.info(f"✅ STATUS AGENT RESPONSE: {response_text[:150]}...")
+
             # Add response to messages
             updated_messages = messages + [{"role": "assistant", "content": response_text}]
 
@@ -532,6 +546,8 @@ Help the user with their booking status.
 
     def _human_interrupt(self, state: JourneyBookingState) -> JourneyBookingState:
         """Handle cases requiring human intervention"""
+
+        logger.info("⚠️ HUMAN INTERRUPT AGENT: Requesting clarification")
 
         return self._update_state(state, {
             "messages": state.get("messages", []) + [{"role": "assistant", "content": "I need some clarification. Could you please provide more details?"}],
