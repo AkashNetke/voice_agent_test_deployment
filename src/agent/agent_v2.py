@@ -11,6 +11,14 @@ from azure.cosmos import CosmosClient
 
 load_dotenv()
 
+"""
+This is a reference implementation of LangChain agent with tool use
+This saves the chat messages into a separate cosmos db table called ChatSessions
+and saves the current session for the user into SessionData table
+Data from these both tables are read and used in the tool use / chat memory
+
+"""
+
 @dataclass
 class SpeakSession:
     bark_tool_count: int

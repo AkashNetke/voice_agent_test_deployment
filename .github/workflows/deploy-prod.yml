@@ -90,10 +90,13 @@ jobs:
 
     - name: Deploy to Azure Container Apps
       run: |
+        SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-8)
+
         az containerapp update \
           --name ${{ env.CONTAINER_APP_NAME }} \
           --resource-group ${{ env.RESOURCE_GROUP }} \
           --image ${{ env.REGISTRY_URL }}/${{ env.IMAGE_NAME }}:latest \
+          --revision-suffix $SHORT_SHA \
           --replace-env-vars "AZURE_OPENAI_ENDPOINT=${{ secrets.AZURE_OPENAI_ENDPOINT_PROD }}" \
             "AZURE_SPEECH_REGION=${{ secrets.AZURE_SPEECH_REGION_PROD }}" \
             "AZURE_SPEECH_KEY=${{ secrets.AZURE_SPEECH_KEY_PROD }}" \
