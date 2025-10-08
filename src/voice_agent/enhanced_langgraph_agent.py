@@ -1,19 +1,18 @@
 """
-Enhanced LangGraph Multi-Agent Journey Booking System 
+Enhanced LangGraph Multi-Agent Journey Booking System
 """
 
 import os
 import re
 import logging
 from typing import Dict, Any, List, Optional, TypedDict
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from langgraph.prebuilt import create_react_agent
 from langchain_openai import AzureChatOpenAI
 from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage, SystemMessage
-from langgraph.graph import StateGraph, MessagesState
-from langgraph.graph.message import add_messages
+from langgraph.graph import StateGraph
 from langgraph.checkpoint.memory import MemorySaver
 
 from voice_agent.agent.journey_booking import get_existing_addresses, save_address_to_api, save_address_to_api_simple, search_volunteers_api
@@ -46,19 +45,19 @@ class JourneyBookingState(TypedDict):
 
 class Command:
     """Command object for explicit state transitions and routing"""
-    
+
     def __init__(self, goto: str, input_data: Dict[str, Any], reason: str = ""):
         self.goto = goto
         self.input_data = input_data
         self.reason = reason
 
-    
+
     def __repr__(self):
         return f"Command(goto='{self.goto}', reason='{self.reason}')"
 
 
 class EnhancedLangGraphBookingAgent:
-    
+
     def __init__(self):
         """Initialize the enhanced LangGraph agent"""
         try:
@@ -71,7 +70,7 @@ class EnhancedLangGraphBookingAgent:
                 temperature=0.1,
                 max_tokens=4000
             )
-            
+
             # Create tools for agents - Simplified architecture
             self.tools = {
                 "booking": [
@@ -98,13 +97,13 @@ class EnhancedLangGraphBookingAgent:
                     self._create_cancel_journey_tool()
                 ]
             }
-            
+
             # Build the graph
             self.graph = self._build_graph()
-            
+
             # Initialize chat history service for database storage
             self.chat_history_service = get_chat_history_service()
-            
+
             logger.info("✅ Enhanced LangGraph Booking Agent initialized successfully")
 
         except Exception as e:
@@ -113,32 +112,32 @@ class EnhancedLangGraphBookingAgent:
 
     def _build_graph(self) -> StateGraph:
         """Build the LangGraph with all nodes and edges"""
-        
+
         # Create the graph
         graph = StateGraph(JourneyBookingState)
-        
+
         # Add nodes - Simplified to 5 core agents
         graph.add_node("supervising_chatbot", self._supervising_chatbot)
         graph.add_node("general_agent", self._general_agent)
         graph.add_node("booking_agent", self._booking_agent)
         graph.add_node("status_agent", self._status_agent)
         graph.add_node("human_interrupt", self._human_interrupt)
-        
+
         # Set entry point
         graph.set_entry_point("supervising_chatbot")
-        
+
         # Add edges (conditional routing handled in supervising_chatbot)
         graph.add_edge("general_agent", "supervising_chatbot")
         graph.add_edge("booking_agent", "supervising_chatbot")
         graph.add_edge("status_agent", "supervising_chatbot")
         graph.add_edge("human_interrupt", "supervising_chatbot")
-        
+
         # Compile the graph
         return graph.compile(checkpointer=MemorySaver())
-    
+
     def _supervising_chatbot(self, state: JourneyBookingState) -> JourneyBookingState:
         """Supervisor that routes requests to appropriate agents"""
-        
+
         try:
             messages = state.get("messages", [])
             if not messages:
@@ -146,10 +145,10 @@ class EnhancedLangGraphBookingAgent:
                     "current_agent": "general_agent",
                     "messages": [{"role": "assistant", "content": "Hello! How can I help you with your journey booking today?"}]
                 })
-            
+
             latest_message = messages[-1] if messages else HumanMessage(content="Hello")
             user_input = latest_message.content if hasattr(latest_message, 'content') else str(latest_message)
-            
+
             # Simplified router prompt
             router_prompt = f"""
 You are a journey booking assistant supervisor. Route user requests to the appropriate agent.
@@ -174,7 +173,7 @@ Routing rules:
 
 Respond with ONLY the agent name (general_agent, booking_agent, status_agent, or human_interrupt).
 """
-            
+
             # Get routing decision
             response = self.llm.invoke([HumanMessage(content=router_prompt)])
             if response and hasattr(response, 'content'):
@@ -182,23 +181,23 @@ Respond with ONLY the agent name (general_agent, booking_agent, status_agent, or
             else:
                 next_agent = "general_agent"
                 logger.warning("Failed to get routing decision from LLM, defaulting to general_agent")
-            
+
             # Validate routing decision
             valid_agents = ["general_agent", "booking_agent", "status_agent", "human_interrupt"]
             if next_agent not in valid_agents:
                 next_agent = "general_agent"
                 logger.warning(f"Invalid routing decision: {next_agent}, defaulting to general_agent")
-            
+
             # Update routing history
             routing_history = state.get("routing_history", [])
             routing_history.append(f"supervising_chatbot -> {next_agent}")
-            
+
             # Update state
             updated_state = self._update_state(state, {
                 "current_agent": next_agent,
                 "routing_history": routing_history
             })
-            
+
             # Route to the appropriate agent
             if next_agent == "general_agent":
                 return self._general_agent(updated_state)
@@ -208,7 +207,7 @@ Respond with ONLY the agent name (general_agent, booking_agent, status_agent, or
                 return self._status_agent(updated_state)
             else:  # human_interrupt
                 return self._human_interrupt(updated_state)
-                
+
         except Exception as e:
             logger.error(f"❌ Error in supervising chatbot: {str(e)}")
             return self._update_state(state, {
@@ -218,34 +217,34 @@ Respond with ONLY the agent name (general_agent, booking_agent, status_agent, or
 
     def _general_agent(self, state: JourneyBookingState) -> JourneyBookingState:
         """Handle general greetings and questions"""
-        
+
         try:
             messages = state.get("messages", [])
             latest_message = messages[-1] if messages else HumanMessage(content="Hello")
             user_input = latest_message.content if hasattr(latest_message, 'content') else str(latest_message)
-            
-            system_prompt = """You are a friendly assistant for Travel Hands journey booking service. 
+
+            system_prompt = """You are a friendly assistant for Travel Hands journey booking service.
             Help users with greetings, general questions, and guide them to book journeys."""
-            
+
             response_prompt = f"""User said: "{user_input}"
-            
+
             Respond in a friendly, helpful way. If they want to book a journey, guide them to provide booking details."""
-            
+
             response = self.llm.invoke([
                 SystemMessage(content=system_prompt),
                 HumanMessage(content=response_prompt)
             ])
-            
+
             # Add response to messages
             response_content = response.content if response and hasattr(response, 'content') else "I'm here to help you with your journey booking."
             updated_messages = messages + [{"role": "assistant", "content": response_content}]
-            
+
             return self._update_state(state, {
                 "messages": updated_messages,
                 "current_agent": "supervising_chatbot",
                 "routing_history": state.get("routing_history", []) + ["general_agent -> supervising_chatbot"]
             })
-            
+
         except Exception as e:
             logger.error(f"❌ Error in general agent: {str(e)}")
             return self._update_state(state, {
@@ -255,23 +254,23 @@ Respond with ONLY the agent name (general_agent, booking_agent, status_agent, or
 
     def _booking_agent(self, state: JourneyBookingState) -> JourneyBookingState:
         """Comprehensive journey booking agent - handles addresses, dates, times, volunteer duration, and booking workflow"""
-        
+
         start_time = datetime.now().timestamp()
-        
+
         try:
             messages = state.get("messages", [])
             latest_message = messages[-1] if messages else HumanMessage(content="I want to book a journey")
             user_input = latest_message.content if hasattr(latest_message, 'content') else str(latest_message)
             user_context = state.get("user_context", {})
-            
+
             # Get user credentials for tools
             user_id = user_context.get("user_id")
             auth_token = user_context.get("auth_token", "")
-            
+
             # Create ReAct agent with all booking tools
             booking_tools = self.tools["booking"]
             booking_agent = create_react_agent(self.llm, booking_tools)
-            
+
             system_prompt = """You are a comprehensive journey booking assistant for Travel Hands.
 
 Available tools:
@@ -357,7 +356,7 @@ When user responds to confirmation request, recognize these as "YES" to proceed:
 ADDRESS CATEGORY GUIDANCE:
 When saving new addresses, determine the appropriate category based on the address type:
 - "Home" or residential addresses → "Home"
-- "Hospital", "Medical Center", "Clinic" → "Hospital" 
+- "Hospital", "Medical Center", "Clinic" → "Hospital"
 - "Museum", "Gallery", "Cultural Center" → "Museum"
 - "School", "University", "College" → "School"
 - "Office", "Work", "Business" → "Office"
@@ -382,19 +381,19 @@ Examples: "flexible" → use extract_journey_reason tool → "Flexible"
 
 CRITICAL: When you have all required information (pickup_address_id, destination_address_id, journey_date, pickup_time, journey_reason, total_time_volunteer), you MUST call the search_volunteers_and_save_journey tool to complete the booking.
 
-IMPORTANT: Use AI reasoning and tools for ALL extraction and processing. 
+IMPORTANT: Use AI reasoning and tools for ALL extraction and processing.
 
 Be helpful, use tools, ask for missing info one at a time."""
-            
+
             # Get conversation context from database
             journey_data = state.get("journey_data", {})
             user_id = user_context.get("user_id")
-            
+
             # Get conversation context from database
             conversation_context = self.chat_history_service.get_conversation_context(user_id)
             if conversation_context == "No previous conversation context.":
                 conversation_context = ""
-            
+
             context = f"""
 User ID: {user_id}
 Auth Token: {auth_token[:20]}... (use full token: {auth_token})
@@ -406,7 +405,7 @@ Missing fields: {state.get('missing_fields', [])}
 
 Current user input: "{user_input}"
 
-IMPORTANT: 
+IMPORTANT:
 1. Extract any new booking information from the current user input
 2. Update the journey_data with any new information found
 3. Use conversation history to understand context
@@ -418,42 +417,42 @@ IMPORTANT:
 9. Always ask about journey notes - if user hasn't provided any notes, ask if they want to add any comments or special instructions
 10. When user confirms (says "yes", "looks good", "thanks", etc.), immediately call search_volunteers_and_save_journey tool
 11. Keep responses concise - only show full journey details at final confirmation
-12. When replying user with date, you need to be aware the date is in DD-MM-YYYY (Day-Month-Year) format, you need to answer it in a user friendly format. 
+12. When replying user with date, you need to be aware the date is in DD-MM-YYYY (Day-Month-Year) format, you need to answer it in a user friendly format.
 
-CHECK: Are all required fields complete? 
+CHECK: Are all required fields complete?
 - If YES: Present a summary of all journey details and ask for user confirmation before calling search_volunteers_and_save_journey tool
 - If NO: Ask for the next missing field in a concise way (don't repeat what you already know)
 
 Process the user's booking request and collect any missing information.
 """
-            
+
             # Invoke the ReAct agent
             messages_list = [
                 SystemMessage(content=system_prompt),
                 HumanMessage(content=context)
             ]
-            
+
             response = booking_agent.invoke(
                 {"messages": messages_list},
                 {"configurable": {"thread_id": f"booking_session_{user_id}"}}
             )
-            
+
             # Extract response
             if response and "messages" in response:
                 last_message = response["messages"][-1]
                 response_text = last_message.content if last_message and hasattr(last_message, 'content') else "I can help you book a journey. What would you like to do?"
             else:
                 response_text = "I can help you book a journey. What would you like to do?"
-            
+
             # Add response to messages
             updated_messages = messages + [{"role": "assistant", "content": response_text}]
-            
+
             return self._update_state(state, {
                 "messages": updated_messages,
                 "current_agent": "supervising_chatbot",
                 "routing_history": state.get("routing_history", []) + ["booking_agent -> supervising_chatbot"]
             })
-            
+
         except Exception as e:
             logger.error(f"❌ Error in booking agent: {str(e)}")
             return self._update_state(state, {
@@ -463,21 +462,21 @@ Process the user's booking request and collect any missing information.
 
     def _status_agent(self, state: JourneyBookingState) -> JourneyBookingState:
         """Handle booking status inquiries"""
-        
+
         try:
             messages = state.get("messages", [])
             latest_message = messages[-1] if messages else HumanMessage(content="What's my booking status?")
             user_input = latest_message.content if hasattr(latest_message, 'content') else str(latest_message)
             user_context = state.get("user_context", {})
-            
+
             # Get user credentials for tools
             user_id = user_context.get("user_id")
             auth_token = user_context.get("auth_token", "")
-            
+
             # Create ReAct agent with status tools
             status_tools = self.tools["status"]
             status_agent = create_react_agent(self.llm, status_tools)
-            
+
             system_prompt = """You are a booking status specialist for Travel Hands.
 
 Available tools:
@@ -487,7 +486,7 @@ Available tools:
 - cancel_journey: Cancel a journey
 
 Help users with their booking status and journey management."""
-            
+
             context = f"""
 User ID: {user_id}
 Auth Token: {auth_token[:20]}... (use full token: {auth_token})
@@ -496,34 +495,34 @@ User input: "{user_input}"
 
 Help the user with their booking status.
 """
-            
+
             # Invoke the ReAct agent
             messages_list = [
                 SystemMessage(content=system_prompt),
                 HumanMessage(content=context)
             ]
-            
+
             response = status_agent.invoke(
                 {"messages": messages_list},
                 {"configurable": {"thread_id": f"status_session_{user_id}"}}
             )
-            
+
             # Extract response
             if response and "messages" in response:
                 last_message = response["messages"][-1]
                 response_text = last_message.content if last_message and hasattr(last_message, 'content') else "I can help you with journey status. What would you like to know?"
             else:
                 response_text = "I can help you with journey status. What would you like to know?"
-            
+
             # Add response to messages
             updated_messages = messages + [{"role": "assistant", "content": response_text}]
-            
+
             return self._update_state(state, {
                 "messages": updated_messages,
                 "current_agent": "supervising_chatbot",
                 "routing_history": state.get("routing_history", []) + ["status_agent -> supervising_chatbot"]
             })
-            
+
         except Exception as e:
             logger.error(f"❌ Error in status agent: {str(e)}")
             return self._update_state(state, {
@@ -533,7 +532,7 @@ Help the user with their booking status.
 
     def _human_interrupt(self, state: JourneyBookingState) -> JourneyBookingState:
         """Handle cases requiring human intervention"""
-        
+
         return self._update_state(state, {
             "messages": state.get("messages", []) + [{"role": "assistant", "content": "I need some clarification. Could you please provide more details?"}],
             "current_agent": "supervising_chatbot",
@@ -549,23 +548,23 @@ Help the user with their booking status.
 
     def process_booking_request(self, session: JourneySession, user_input: str) -> tuple[str, bool]:
         """Process a booking request using the enhanced LangGraph agent"""
-        
+
         start_time = datetime.now().timestamp()
-        
+
         try:
             # Get conversation context from database
             conversation_context = self.chat_history_service.get_conversation_context(session.user_id)
-            
+
             # Initialize session.journey_data if it doesn't exist
             if not hasattr(session, 'journey_data'):
                 session.journey_data = {}
-            
+
             # Define required fields for journey booking
             required_fields = [
-                "pickup_address", "destination_address", "journey_date", 
+                "pickup_address", "destination_address", "journey_date",
                 "pickup_time", "journey_reason", "total_time_volunteer", "journey_notes"
             ]
-            
+
             # Initialize missing_fields if not present or empty
             existing_missing_fields = getattr(session, 'missing_fields', [])
             if not existing_missing_fields:
@@ -577,7 +576,7 @@ Help the user with their booking status.
                 session.missing_fields = missing_fields
             else:
                 missing_fields = existing_missing_fields.copy()
-            
+
             # Build conversation history from database context
             conversation_messages = []
             if conversation_context and conversation_context != "No previous conversation context.":
@@ -589,10 +588,10 @@ Help the user with their booking status.
                             conversation_messages.append({"role": "user", "content": line[6:]})
                         elif line.startswith('Assistant: '):
                             conversation_messages.append({"role": "assistant", "content": line[11:]})
-            
+
             # Add current user input to conversation
             conversation_messages.append({"role": "user", "content": user_input})
-            
+
             # Create initial state with conversation history
             initial_state = {
                 "messages": conversation_messages,
@@ -618,27 +617,27 @@ Help the user with their booking status.
                 "last_successful_operation": None,
                 "fallback_triggered": False
             }
-            
+
             # Run the graph
             config = {"configurable": {"thread_id": f"session_{session.user_id}"}}
             result = self.graph.invoke(initial_state, config)
-            
+
             # Ensure result is not None
             if result is None:
                 logger.error("❌ Graph invocation returned None")
                 return "I'm experiencing technical difficulties. Please try again.", False
-            
+
             # Update session with any collected data from the agent
             if "journey_data" in result and result["journey_data"]:
                 session.journey_data.update(result["journey_data"])
-            
+
             if "missing_fields" in result:
                 session.missing_fields = result["missing_fields"]
-            
+
             # Update session with conversation messages
             if "messages" in result and result["messages"]:
                 session.messages = result["messages"]
-            
+
             # Extract response
             messages = result.get("messages", [])
             if messages and len(messages) > 0:
@@ -652,15 +651,15 @@ Help the user with their booking status.
                     response_text = str(last_message) if last_message else "I'm here to help you with your journey booking."
             else:
                 response_text = "I'm here to help you with your journey booking."
-            
+
             # Log performance metrics
             duration = datetime.now().timestamp() - start_time
             logger.info(f"📊 Enhanced LangGraph processing completed in {duration:.2f}s")
-            
+
             # Determine if booking is complete
             booking_status = result.get("booking_status", "none")
             is_complete = booking_status == "complete"
-            
+
             # Save messages to database for persistent storage
             try:
                 # Save user message
@@ -668,26 +667,26 @@ Help the user with their booking status.
                     user_id=session.user_id,
                     content=user_input
                 )
-                
+
                 # Save assistant response
                 self.chat_history_service.add_assistant_message(
                     user_id=session.user_id,
                     content=response_text
                 )
-                
+
                 logger.info(f"💾 Messages saved to database for user {session.user_id}")
             except Exception as db_error:
                 logger.warning(f"⚠️ Failed to save messages to database: {str(db_error)}")
-            
+
             logger.info(f"🤖 Enhanced LangGraph Agent response: {response_text}...")
-            
+
             return response_text, is_complete
-            
+
         except Exception as e:
             # Handle error with comprehensive logging
             duration = datetime.now().timestamp() - start_time
             logger.error(f"❌ Enhanced LangGraph agent processing failed after {duration:.2f}s: {str(e)}")
-            
+
             return "I'm here to help you with your journey booking. How can I assist you?", True
 
     def get_service_info(self) -> Dict[str, Any]:
@@ -714,9 +713,9 @@ Help the user with their booking status.
                     user_name=user_name,
                     auth_token=auth_token
                 )
-                
+
                 result = get_existing_addresses(session)
-                
+
                 if result.get("success", False):
                     addresses = result.get("addresses", [])
                     if addresses:
@@ -727,11 +726,11 @@ Help the user with their booking status.
                         return "📋 No saved addresses found."
                 else:
                     return f"❌ Error retrieving addresses: {result.get('error', 'Unknown error')}"
-                    
+
             except Exception as e:
                 logger.error(f"Error in get_saved_addresses tool: {str(e)}")
                 return f"Error retrieving addresses: {str(e)}"
-        
+
         return get_saved_addresses
 
     def _create_save_address_tool(self):
@@ -745,7 +744,7 @@ Help the user with their booking status.
                     user_name=user_name,
                     auth_token=auth_token
                 )
-                
+
                 result = save_address_to_api_simple(
                     session=session,
                     address_type=address_category,
@@ -755,16 +754,16 @@ Help the user with their booking status.
                     city="London",
                     special_notes=special_notes
                 )
-                
+
                 if result.get("success", False):
                     return f"✅ Address saved successfully: {address_line1}, {address_line2}, {postcode} (Category: {address_category})"
                 else:
                     return f"❌ Error saving address: {result.get('error', 'Unknown error')}"
-                    
+
             except Exception as e:
                 logger.error(f"Error in save_new_address tool: {str(e)}")
                 return f"Error saving address: {str(e)}"
-        
+
         return save_new_address
 
     def _create_validate_address_tool(self):
@@ -775,16 +774,16 @@ Help the user with their booking status.
             try:
                 if not address_line1 or not postcode:
                     return "❌ Address validation failed: Missing address line or postcode"
-                
+
                 if len(postcode) < 5:
                     return "❌ Address validation failed: Postcode too short"
-                
+
                 return f"✅ Address validation passed: {address_line1}, {postcode}"
-                    
+
             except Exception as e:
                 logger.error(f"Error in validate_address tool: {str(e)}")
                 return f"Error validating address: {str(e)}"
-        
+
         return validate_address
 
     def _create_extract_date_tool(self):
@@ -798,7 +797,7 @@ Help the user with their booking status.
                 today = datetime.now()
                 current_date = today.strftime("%d-%m-%Y")
                 current_day = today.strftime("%A")
-                
+
                 # Create comprehensive date extraction prompt
                 date_prompt = f"""
 You are a date extraction specialist. Extract and convert natural language dates to DD-MM-YYYY format.
@@ -832,7 +831,7 @@ IMPORTANT: Always calculate relative dates from the current date ({current_date}
 
 Return ONLY the date in DD-MM-YYYY format, no additional text.
 """
-                
+
                 response = self.llm.invoke([HumanMessage(content=date_prompt)])
                 if response and hasattr(response, 'content'):
                     return f"📅 Date extracted: {response.content}"
@@ -840,7 +839,7 @@ Return ONLY the date in DD-MM-YYYY format, no additional text.
                     return "Error extracting date"
             except Exception as e:
                 return f"Error extracting date: {str(e)}"
-        
+
         return extract_date
 
     def _create_validate_date_tool(self):
@@ -855,7 +854,7 @@ Return ONLY the date in DD-MM-YYYY format, no additional text.
                     return f"❌ Invalid date format: {date_input}"
             except Exception as e:
                 return f"Error validating date: {str(e)}"
-        
+
         return validate_date
 
     def _create_format_date_tool(self):
@@ -867,7 +866,7 @@ Return ONLY the date in DD-MM-YYYY format, no additional text.
                 return f"📅 Formatted date: {date_input}"
             except Exception as e:
                 return f"Error formatting date: {str(e)}"
-        
+
         return format_date
 
     def _create_extract_time_tool(self):
@@ -892,7 +891,7 @@ EXTRACTION RULES:
 - "afternoon" → 14:00:00 (default afternoon time)
 - "evening" → 18:00:00 (default evening time)
 
-IMPORTANT: 
+IMPORTANT:
 - Use 24-hour format (HH:MM:SS)
 - AM times: 00:00:00 to 11:59:59
 - PM times: 12:00:00 to 23:59:59
@@ -900,7 +899,7 @@ IMPORTANT:
 
 Return ONLY the time in HH:MM:SS format, no additional text.
 """
-                
+
                 response = self.llm.invoke([HumanMessage(content=time_prompt)])
                 if response and hasattr(response, 'content'):
                     return f"🕐 Time extracted: {response.content}"
@@ -908,7 +907,7 @@ Return ONLY the time in HH:MM:SS format, no additional text.
                     return "Error extracting time"
             except Exception as e:
                 return f"Error extracting time: {str(e)}"
-        
+
         return extract_time
 
     def _create_validate_time_tool(self):
@@ -923,7 +922,7 @@ Return ONLY the time in HH:MM:SS format, no additional text.
                     return f"❌ Invalid time format: {time_input}"
             except Exception as e:
                 return f"Error validating time: {str(e)}"
-        
+
         return validate_time
 
     def _create_format_time_tool(self):
@@ -935,7 +934,7 @@ Return ONLY the time in HH:MM:SS format, no additional text.
                 return f"🕐 Formatted time: {time_input}"
             except Exception as e:
                 return f"Error formatting time: {str(e)}"
-        
+
         return format_time
 
     def _create_extract_volunteer_time_tool(self):
@@ -951,7 +950,7 @@ Return ONLY the time in HH:MM:SS format, no additional text.
                     return "Error extracting volunteer time"
             except Exception as e:
                 return f"Error extracting volunteer time: {str(e)}"
-        
+
         return extract_volunteer_time
 
     def _create_validate_volunteer_time_tool(self):
@@ -965,14 +964,14 @@ Return ONLY the time in HH:MM:SS format, no additional text.
                     "upto 1 and half hour", "upto 2 hour", "upto 2 and half hour",
                     "upto 3 hours", "above 3 hours"
                 ]
-                
+
                 if time_input in valid_options:
                     return f"✅ Valid volunteer time: {time_input}"
                 else:
                     return f"❌ Invalid volunteer time: {time_input}"
             except Exception as e:
                 return f"Error validating volunteer time: {str(e)}"
-        
+
         return validate_volunteer_time
 
     def _create_map_volunteer_time_tool(self):
@@ -992,18 +991,18 @@ Return ONLY the time in HH:MM:SS format, no additional text.
                     "3 hours": "upto 3 hours",
                     "more than 3 hours": "above 3 hours"
                 }
-                
+
                 user_input_lower = user_input.lower().strip()
-                
+
                 for key, value in mapping_rules.items():
                     if key in user_input_lower:
                         return f"🎯 Mapped '{user_input}' → '{value}'"
-                
+
                 return f"❌ No mapping found for '{user_input}'"
-                    
+
             except Exception as e:
                 return f"Error mapping volunteer time: {str(e)}"
-        
+
         return map_volunteer_time
 
     def _create_extract_journey_reason_tool(self):
@@ -1019,7 +1018,7 @@ USER INPUT: "{user_input}"
 
 CLASSIFICATION RULES:
 - "flexible" or "leisure" or "walk" or "casual" → "Flexible"
-- "important" or "appointment" or "meeting" or "urgent" → "Important" 
+- "important" or "appointment" or "meeting" or "urgent" → "Important"
 - "very important" or "critical" or "emergency" or "must go" → "Very Important"
 
 EXAMPLES:
@@ -1031,7 +1030,7 @@ EXAMPLES:
 
 Return ONLY the classified reason (Flexible, Important, or Very Important), no additional text.
 """
-                
+
                 response = self.llm.invoke([HumanMessage(content=reason_prompt)])
                 if response and hasattr(response, 'content'):
                     return f"🎯 Journey reason extracted: {response.content}"
@@ -1039,7 +1038,7 @@ Return ONLY the classified reason (Flexible, Important, or Very Important), no a
                     return "Error extracting journey reason"
             except Exception as e:
                 return f"Error extracting journey reason: {str(e)}"
-        
+
         return extract_journey_reason
 
     def _create_search_volunteers_tool(self):
@@ -1053,7 +1052,7 @@ Return ONLY the classified reason (Flexible, Important, or Very Important), no a
                     user_name=user_name,
                     auth_token=auth_token
                 )
-                
+
                 journey_data = {
                     "pickup_address_id": pickup_address_id,
                     "dest_address_id": destination_address_id,  # Note: API expects dest_address_id, not destination_address_id
@@ -1065,18 +1064,18 @@ Return ONLY the classified reason (Flexible, Important, or Very Important), no a
                     "total_time_volunteer": total_time_volunteer,
                     "journey_notes": journey_notes
                 }
-                
+
                 result = search_volunteers_api(session, journey_data)
-                
+
                 if result.get("success", False):
                     return f"✅ Journey booked successfully! {result.get('message', '')}"
                 else:
                     return f"❌ Error booking journey: {result.get('error', 'Unknown error')}"
-                    
+
             except Exception as e:
                 logger.error(f"Error in search_volunteers_and_save_journey tool: {str(e)}")
                 return f"Error booking journey: {str(e)}"
-        
+
         return search_volunteers_and_save_journey
 
     def _create_validate_journey_tool(self):
@@ -1093,20 +1092,20 @@ Return ONLY the classified reason (Flexible, Important, or Very Important), no a
                     "journey_reason": journey_reason,
                     "total_time_volunteer": total_time_volunteer
                 }
-                
+
                 missing_fields = []
                 for field, value in required_fields.items():
                     if not value:
                         missing_fields.append(field)
-                
+
                 if missing_fields:
                     return f"❌ Missing fields: {', '.join(missing_fields)}"
                 else:
                     return "✅ All required fields present"
-                    
+
             except Exception as e:
                 return f"Error validating journey data: {str(e)}"
-        
+
         return validate_journey_data
 
     def _create_get_journey_status_tool(self):
@@ -1115,7 +1114,7 @@ Return ONLY the classified reason (Flexible, Important, or Very Important), no a
         def get_journey_status(user_id: int, auth_token: str) -> str:
             """Get journey status from Travel Hands API"""
             return "📋 Journey status: Active"
-        
+
         return get_journey_status
 
     def _create_get_volunteer_contact_tool(self):
@@ -1124,7 +1123,7 @@ Return ONLY the classified reason (Flexible, Important, or Very Important), no a
         def get_volunteer_contact(user_id: int, auth_token: str) -> str:
             """Get volunteer contact information"""
             return "📞 Volunteer contact: Available"
-        
+
         return get_volunteer_contact
 
     def _create_update_journey_status_tool(self):
@@ -1133,7 +1132,7 @@ Return ONLY the classified reason (Flexible, Important, or Very Important), no a
         def update_journey_status(user_id: int, auth_token: str, status: str) -> str:
             """Update journey status"""
             return f"✅ Journey status updated to: {status}"
-        
+
         return update_journey_status
 
     def _create_cancel_journey_tool(self):
@@ -1142,5 +1141,5 @@ Return ONLY the classified reason (Flexible, Important, or Very Important), no a
         def cancel_journey(user_id: int, auth_token: str) -> str:
             """Cancel a journey"""
             return "❌ Journey canceled"
-        
+
         return cancel_journey
