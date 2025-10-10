@@ -5,7 +5,7 @@ Enhanced LangGraph Multi-Agent Journey Booking System
 import os
 import re
 import logging
-from typing import Dict, Any, List, Optional, TypedDict, Tuple
+from typing import Dict, Any, List, Optional, TypedDict
 from datetime import datetime
 
 from langgraph.prebuilt import create_react_agent
