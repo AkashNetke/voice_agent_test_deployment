@@ -5,7 +5,7 @@ Enhanced LangGraph Multi-Agent Journey Booking System
 import os
 import re
 import logging
-from typing import Dict, Any, List, Optional, TypedDict
+from typing import Dict, Any, List, Optional, TypedDict, Tuple
 from datetime import datetime
 
 from langgraph.prebuilt import create_react_agent
@@ -149,9 +149,19 @@ class EnhancedLangGraphBookingAgent:
             latest_message = messages[-1] if messages else HumanMessage(content="Hello")
             user_input = latest_message.content if hasattr(latest_message, 'content') else str(latest_message)
 
-            # Simplified router prompt
+            # Get last assistant message for context
+            last_assistant_message = ""
+            for msg in reversed(messages[:-1]):  # Exclude the latest user message
+                if isinstance(msg, dict) and msg.get('role') == 'assistant':
+                    last_assistant_message = msg.get('content', '')
+                    break
+                elif hasattr(msg, 'type') and msg.type == 'ai':
+                    last_assistant_message = msg.content if hasattr(msg, 'content') else ''
+                    break
+
+            # Context-aware router prompt
             router_prompt = f"""
-You are a journey booking assistant supervisor. Route user requests to the appropriate agent.
+You are a journey booking assistant supervisor. Route user requests to the appropriate agent based on conversation context.
 
 Available agents:
 - general_agent: Greetings, general questions, help
@@ -159,19 +169,47 @@ Available agents:
 - status_agent: Booking status, volunteer contact, journey updates
 - human_interrupt: When clarification or human input is needed
 
-User input: "{user_input}"
+CONVERSATION CONTEXT:
+- Last assistant message: "{last_assistant_message[:150]}..."
 
-Current state:
-- Booking status: {state.get('booking_status', 'none')}
-- Missing fields: {state.get('missing_fields', [])}
+CURRENT USER INPUT: "{user_input}"
 
-Routing rules:
-1. If user greets or asks general questions → general_agent
-2. If user mentions journey booking details (addresses, dates, times, duration, reason, notes) → booking_agent
-3. If user asks about existing booking status → status_agent
-4. If information is unclear or clarification needed → human_interrupt
+CONTEXT-AWARE ROUTING RULES (priority order):
 
-Respond with ONLY the agent name (general_agent, booking_agent, status_agent, or human_interrupt).
+1. MAINTAIN CONVERSATION FLOW (HIGHEST PRIORITY):
+   - If booking_agent was last active AND booking status is in progress:
+     * User is likely responding to a question (e.g., "yes", "no", "none", short answers, confirmations)
+     * User is providing requested information (addresses, dates, times, notes)
+     * Route to: booking_agent (UNLESS user explicitly changes topic)
+   
+   - If status_agent was last active AND user is continuing status discussion:
+     * Route to: status_agent
+
+2. DETECT TOPIC CHANGES:
+   - User EXPLICITLY requests different action:
+     * "check status", "cancel booking", "help", "start over", "new booking"
+     * Route to appropriate agent based on new request
+   
+   - User greets again or asks general questions:
+     * "hello", "hi", "what can you do", "help"
+     * Route to: general_agent
+
+3. NEW CONVERSATIONS:
+   - If no active agent or booking complete:
+     * Journey booking request → booking_agent
+     * Status inquiry → status_agent
+     * General question/greeting → general_agent
+
+4. CLARIFICATION NEEDED:
+   - Only route to human_interrupt if input is genuinely unclear AND not part of active booking flow
+
+CRITICAL GUIDELINES:
+- Short responses like "yes", "no", "none", "okay" during active booking → keep current agent (booking_agent)
+- If user is answering a question from the last assistant message → keep current agent
+- Only route away if user CLEARLY changes topic or starts new request
+- When in doubt during active booking → route to booking_agent
+
+Analyze the conversation context carefully and respond with ONLY the agent name (general_agent, booking_agent, status_agent, or human_interrupt).
 """
 
             # Get routing decision
@@ -188,8 +226,10 @@ Respond with ONLY the agent name (general_agent, booking_agent, status_agent, or
                 next_agent = "general_agent"
                 logger.warning(f"Invalid routing decision: {next_agent}, defaulting to general_agent")
 
-            # Log routing decision
-            logger.info(f"🎯 SUPERVISOR ROUTING: User input: '{user_input[:100]}...' → Routing to: {next_agent}")
+            # Log routing decision with context
+            logger.info(f"🎯 SUPERVISOR ROUTING DECISION:")
+            logger.info(f"   User input: '{user_input[:100]}...'")
+            logger.info(f"   → Routing to: {next_agent}")
 
             # Update routing history
             routing_history = state.get("routing_history", [])
@@ -336,11 +376,6 @@ When all required fields are collected:
 3. Ask for user confirmation: "Does this look correct? Please say yes to proceed or let me know if you'd like to change anything"
 4. Only call search_volunteers_and_save_journey tool after user confirms
 
-DURING CONVERSATION (not final confirmation):
-- Keep responses short and focused
-- Ask for one missing piece of information
-- Don't repeat what you already know
-- Don't show technical details like IDs
 
 CONVERSATION GUIDELINES:
 - Keep responses concise and focused on what the user needs to know
