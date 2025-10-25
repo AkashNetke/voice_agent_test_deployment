@@ -28,7 +28,7 @@ class SpeechServices:
             region=speech_region
         )
         self.speech_config.speech_recognition_language = "en-US"
-        self.speech_config.speech_synthesis_voice_name = "en-US-JennyNeural"  # Pick your preferred voice
+        self.speech_config.speech_synthesis_voice_name = "en-US-AnaNeural"  # Pick your preferred voice
         self.speech_config.set_speech_synthesis_output_format(
             speechsdk.SpeechSynthesisOutputFormat.Audio16Khz32KBitRateMonoMp3
         )
