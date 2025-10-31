@@ -14,7 +14,7 @@ class SpeechServices:
         """Initialize speech config with Azure credentials."""
         speech_key = os.environ.get('AZURE_SPEECH_KEY')
         speech_region = os.environ.get('AZURE_SPEECH_REGION')
-        
+
         logger.info(f"🔑 Initializing Azure Speech Services...")
         logger.info(f"🌍 Region: {speech_region}")
         logger.info(f"🔐 API Key: {'***' + (speech_key[-4:] if speech_key else 'None')}")
@@ -28,11 +28,11 @@ class SpeechServices:
             region=speech_region
         )
         self.speech_config.speech_recognition_language = "en-US"
-        self.speech_config.speech_synthesis_voice_name = "en-US-AnaNeural"  # Pick your preferred voice
+        # self.speech_config.speech_synthesis_voice_name = "en-US-AnaNeural"  # Pick your preferred voice
         self.speech_config.set_speech_synthesis_output_format(
             speechsdk.SpeechSynthesisOutputFormat.Audio16Khz32KBitRateMonoMp3
         )
-        
+
         logger.info("✅ Azure Speech Services initialized successfully")
         self._init_stream()
 
@@ -49,10 +49,10 @@ class SpeechServices:
 
     def transcribe(self):
         self.stream.close()
-        
+
         result = self.recognizer.recognize_once_async().get()
         self._init_stream()
-        
+
         if result.reason == speechsdk.ResultReason.RecognizedSpeech:
             return result.text
         elif result.reason == speechsdk.ResultReason.NoMatch:
@@ -62,8 +62,23 @@ class SpeechServices:
 
     def synthesize_text_to_speech(self, text: str) -> bytes:
         speech_synthesizer = speechsdk.SpeechSynthesizer(speech_config=self.speech_config, audio_config=None)
-        result = speech_synthesizer.speak_text_async(text).get()
-        
+        ssml_text = f"""
+            <speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis"
+            xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="en-US">
+                <voice name="en-US-SerenaMultilingualNeural">
+                    <lang xml:lang="en-GB">
+                        <mstts:express-as style="empathetic">
+                            <prosody rate="-10%" pitch="+5%" volume="+10%">
+                                {text}
+                            </prosody>
+                        </mstts:express-as>
+                    </lang>
+                </voice>
+            </speak>
+        """
+
+        result = speech_synthesizer.speak_text_async(ssml_text).get()
+
         if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
             audio_stream = speechsdk.AudioDataStream(result)
             audio_bytes = bytearray()
@@ -75,7 +90,7 @@ class SpeechServices:
                 audio_bytes.extend(buffer[:bytes_read])
 
             return bytes(audio_bytes)
-        
+
         elif result.reason == speechsdk.ResultReason.Canceled:
             cancellation_details = result.cancellation_details
             return f"Speech synthesis canceled: {cancellation_details.reason}"
@@ -299,35 +314,35 @@ class SpeechServices:
             import subprocess
             import tempfile
             import time
-            
+
             # Create a temporary audio file
             with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_file:
                 temp_filename = temp_file.name
-            
+
             # Create audio file output config
             audio_config = speechsdk.audio.AudioOutputConfig(filename=temp_filename)
             speech_synthesizer = speechsdk.SpeechSynthesizer(
                 speech_config=self.speech_config,
                 audio_config=audio_config
             )
-            
+
             # Synthesize speech to file
             result = speech_synthesizer.speak_text_async(text).get()
-            
+
             if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
                 # Check if file was created and has content
                 if os.path.exists(temp_filename) and os.path.getsize(temp_filename) > 0:
                     try:
                         # Play the audio file using system command
                         subprocess.run(['afplay', temp_filename], timeout=30, check=True)
-                        
+
                         # Clean up the temporary file after a short delay
                         time.sleep(0.5)
                         try:
                             os.unlink(temp_filename)
                         except:
                             pass  # Don't fail if cleanup doesn't work
-                            
+
                         return "Speech synthesis completed successfully."
                     except subprocess.TimeoutExpired:
                         return "Speech synthesis timeout - audio file may be too long."
@@ -345,6 +360,6 @@ class SpeechServices:
                     if cancellation_details.error_details:
                         error_msg += f" - {cancellation_details.error_details}"
                 return error_msg
-                
+
         except Exception as e:
             return f"Speech synthesis error: {str(e)}"
