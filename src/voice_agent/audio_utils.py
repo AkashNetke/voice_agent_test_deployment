@@ -419,7 +419,7 @@ class AudioProcessor:
     </voice>
 </speak>
 """
-            result = speech_synthesizer.speak_text_async(ssml_text).get()
+            result = speech_synthesizer.speak_ssml_async(ssml_text).get()
 
             # Check synthesis result
             if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
