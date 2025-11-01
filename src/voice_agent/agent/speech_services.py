@@ -34,6 +34,7 @@ class SpeechServices:
 
         logger.info("✅ Azure Speech Services initialized successfully")
 
+    # to be deleted with streamlit code
     def speech_to_text(self):
         """
         Convert speech from microphone to text.
@@ -55,6 +56,7 @@ class SpeechServices:
             cancellation_details = result.cancellation_details
             return f"Speech Recognition canceled: {cancellation_details.reason}"
 
+    # to be deleted with streamlit code
     def text_to_speech_streamlit(self, text, message_type="general"):
         """
         Streamlit-compatible text-to-speech that uses file output and system playback.
