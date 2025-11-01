@@ -92,8 +92,8 @@ Generate only the address type, nothing else:
         return f"Location- {postcode}"
 
 # Travel Hands API configuration
-TRAVEL_HANDS_API_BASE_URL = "https://travelhands-test-e5a3h9akcfevhwc4.uksouth-01.azurewebsites.net"
-# TRAVEL_HANDS_API_BASE_URL = "http://localhost:8081"
+# TRAVEL_HANDS_API_BASE_URL = "https://travelhands-test-e5a3h9akcfevhwc4.uksouth-01.azurewebsites.net"
+TRAVEL_HANDS_API_BASE_URL = "http://localhost:8081"
 
 def save_address_to_api_simple(session, address_type, address_line1, address_line2, postcode, city="London", special_notes=""):
     """Save address data to Travel Hands API with direct input (no LLM generation)"""
