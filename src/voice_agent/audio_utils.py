@@ -8,7 +8,6 @@ import base64
 import tempfile
 import requests
 import json
-import struct
 import subprocess
 from typing import Optional, Dict
 import azure.cognitiveservices.speech as speechsdk
@@ -135,9 +134,9 @@ class AudioProcessor:
     Uses the REST API for speech-to-text (more reliable) and Speech SDK for text-to-speech.
     """
 
-    def __init__(self, speech_services: SpeechServices):
+    def __init__(self, speech_services: SpeechServices, debug_mode: bool = False):
         self.speech_services = speech_services
-        self.debug_mode = True
+        self.debug_mode = debug_mode
         self.debug_dir = tempfile.mkdtemp(prefix="voice_agent_debug_")
 
         # Get Azure Speech configuration
@@ -150,45 +149,10 @@ class AudioProcessor:
         # REST API endpoint for speech-to-text (Microsoft's recommended approach)
         self.stt_endpoint = f"https://{self.speech_region}.stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1"
 
-        logger.info(f"🔍 AudioProcessor initialized with debug mode enabled")
-        logger.info(f"🔍 Debug files will be saved to: {self.debug_dir}")
+        logger.info(f"🔍 AudioProcessor initialized with debug mode {'enabled' if self.debug_mode else 'disabled'}")
+        if self.debug_mode:
+            logger.info(f"🔍 Debug files will be saved to: {self.debug_dir}")
         logger.info(f"🔍 Using Azure REST API endpoint: {self.stt_endpoint}")
-
-    def base64_to_audio_file(self, base64_audio: str) -> str:
-        """Convert Base64 encoded audio to temporary audio file"""
-        try:
-            audio_data = base64.b64decode(base64_audio)
-
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_file:
-                temp_file.write(audio_data)
-                temp_filename = temp_file.name
-
-            logger.info(f"🔍 Created temporary audio file: {temp_filename} ({len(audio_data)} bytes)")
-            return temp_filename
-
-        except Exception as e:
-            logger.error(f"❌ Failed to decode Base64 audio: {str(e)}")
-            raise ValueError(f"Invalid Base64 audio data: {str(e)}")
-
-    def audio_file_to_base64(self, audio_file_path: str) -> str:
-        """Convert audio file to Base64 encoded string"""
-        try:
-            if not os.path.exists(audio_file_path):
-                raise FileNotFoundError(f"Audio file not found: {audio_file_path}")
-
-            with open(audio_file_path, 'rb') as audio_file:
-                audio_data = audio_file.read()
-                base64_audio = base64.b64encode(audio_data).decode('utf-8')
-
-            logger.info(f"🔍 Encoded audio file to Base64: {audio_file_path} ({len(audio_data)} bytes)")
-            return base64_audio
-
-        except FileNotFoundError:
-            logger.error(f"❌ Audio file not found: {audio_file_path}")
-            raise
-        except Exception as e:
-            logger.error(f"❌ Failed to encode audio file: {str(e)}")
-            raise ValueError(f"Error reading audio file: {str(e)}")
 
     def speech_to_text_from_base64(self, base64_audio_data: str) -> str:
         """
@@ -197,31 +161,31 @@ class AudioProcessor:
         Now includes automatic format detection and conversion.
         """
         if not base64_audio_data or not base64_audio_data.strip():
-            logger.info("🔇 Empty audio data - treating as silence")
+            logger.debug("🔇 Empty audio data - treating as silence")
             return ""  # Return empty string for silence, not error message
 
         try:
-            logger.info(f"🎤 Starting speech-to-text conversion from Base64 audio")
-            logger.info(f"🔍 Base64 audio length: {len(base64_audio_data)} characters")
+            logger.debug(f"🎤 Starting speech-to-text conversion from Base64 audio")
+            logger.debug(f"🔍 Base64 audio length: {len(base64_audio_data)} characters")
 
             # Decode Base64 audio data
             try:
                 decoded_audio_data = base64.b64decode(base64_audio_data)
-                logger.info(f"🔍 Decoded audio data size: {len(decoded_audio_data)} bytes")
+                logger.debug(f"🔍 Decoded audio data size: {len(decoded_audio_data)} bytes")
             except Exception as e:
                 logger.error(f"❌ Failed to decode Base64 audio: {str(e)}")
                 return ""  # Return empty string for invalid audio
 
             # Check for very small audio files (likely silence)
             if len(decoded_audio_data) < 1000:  # Less than 1KB is likely just noise
-                logger.info("🔇 Audio data too small - likely silence or noise")
+                logger.debug("🔇 Audio data too small - likely silence or noise")
                 return ""  # Return empty string for tiny audio
 
             # Analyze audio format and convert if needed
             analyzer = AudioFormatAnalyzer()
             format_info = analyzer.analyze_audio_header(decoded_audio_data)
 
-            logger.info(f"🔍 Detected audio format: {format_info['detected_format']}")
+            logger.debug(f"🔍 Detected audio format: {format_info['detected_format']}")
 
             # Convert to WAV if not already in WAV format
             if not format_info.get('is_valid_wav', False):
@@ -229,11 +193,11 @@ class AudioProcessor:
                 converted_data = analyzer.convert_to_wav_ffmpeg(decoded_audio_data)
                 if converted_data:
                     decoded_audio_data = converted_data
-                    logger.info("✅ Audio converted to WAV successfully")
+                    logger.debug("✅ Audio converted to WAV successfully")
 
                     # Verify conversion
                     verify_info = analyzer.analyze_audio_header(decoded_audio_data)
-                    logger.info(f"🔍 Post-conversion format: {verify_info['detected_format']}")
+                    logger.debug(f"🔍 Post-conversion format: {verify_info['detected_format']}")
                 else:
                     logger.error("❌ Audio conversion failed")
                     return ""
@@ -243,36 +207,31 @@ class AudioProcessor:
             # Create temporary file for debugging
             temp_filename = None
             try:
-                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_file:
-                    temp_file.write(decoded_audio_data)
-                    temp_filename = temp_file.name
-
-                logger.info(f"🔍 Created temporary audio file: {temp_filename} ({len(decoded_audio_data)} bytes)")
-
-                # Save debug copy if enabled
+                # save a file if it is running in debug mode
                 if self.debug_mode:
-                    debug_file = os.path.join(self.debug_dir, f"processed_audio_{os.path.basename(temp_filename)}")
-                    with open(debug_file, 'wb') as f:
-                        f.write(decoded_audio_data)
-                    logger.info(f"🔍 Debug: Saved processed audio to {debug_file}")
+                    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_file:
+                        temp_file.write(decoded_audio_data)
+                        temp_filename = temp_file.name
+
+                    logger.info(f"🔍 Created temporary audio file: {temp_filename} ({len(decoded_audio_data)} bytes)")
 
                 # Check final WAV file format
                 if len(decoded_audio_data) >= 16:
                     header = decoded_audio_data[:16]
-                    logger.info(f"🔍 Final audio file size: {os.path.getsize(temp_filename)} bytes")
-                    logger.info(f"🔍 Final audio header (first 16 bytes): {header}")
-                    logger.info(f"🔍 Final header as hex: {header.hex()}")
+                    logger.debug(f"🔍 Final audio file size: {os.path.getsize(temp_filename)} bytes")
+                    logger.debug(f"🔍 Final audio header (first 16 bytes): {header}")
+                    logger.debug(f"🔍 Final header as hex: {header.hex()}")
 
                     if header.startswith(b'RIFF') and b'WAVE' in header:
-                        logger.info("✅ Final audio file is a valid WAV file")
+                        logger.debug("✅ Final audio file is a valid WAV file")
                     else:
-                        logger.warning("⚠️ Final audio file may still not be a valid WAV format")
+                        logger.debug("⚠️ Final audio file may still not be a valid WAV format")
 
                 # Use Azure Speech-to-Text REST API
                 return self._perform_azure_rest_stt(decoded_audio_data)
 
             finally:
-                # Clean up temporary file
+                # Clean up temporary file created in debug mode
                 if temp_filename and os.path.exists(temp_filename):
                     os.unlink(temp_filename)
                     logger.info(f"🧹 Cleaned up temporary file: {temp_filename}")
@@ -287,7 +246,7 @@ class AudioProcessor:
         This follows Microsoft's recommended approach for short audio files.
         """
         try:
-            logger.info("🌐 Using Azure Speech-to-Text REST API...")
+            logger.debug("🌐 Using Azure Speech-to-Text REST API...")
 
             # Prepare headers according to Microsoft documentation
             headers = {
@@ -303,8 +262,8 @@ class AudioProcessor:
                 'profanity': 'masked'
             }
 
-            logger.info(f"🔍 Making REST API request to: {self.stt_endpoint}")
-            logger.info(f"🔍 Audio data size: {len(audio_data)} bytes")
+            logger.debug(f"🔍 Making REST API request to: {self.stt_endpoint}")
+            logger.debug(f"🔍 Audio data size: {len(audio_data)} bytes")
 
             # Make the REST API call
             response = requests.post(
@@ -315,11 +274,11 @@ class AudioProcessor:
                 timeout=30
             )
 
-            logger.info(f"🔍 Azure API response status: {response.status_code}")
+            logger.debug(f"🔍 Azure API response status: {response.status_code}")
 
             if response.status_code == 200:
                 result = response.json()
-                logger.info(f"🔍 Azure API response: {json.dumps(result, indent=2)}")
+                logger.debug(f"🔍 Azure API response: {json.dumps(result, indent=2)}")
 
                 # Parse response according to Microsoft documentation
                 recognition_status = result.get('RecognitionStatus')
@@ -384,14 +343,14 @@ class AudioProcessor:
 
         temp_filename = None
         try:
-            logger.info(f"🔊 Starting text-to-speech conversion for: '{text[:50]}{'...' if len(text) > 50 else ''}'")
-            logger.info(f"🔍 Message type: {message_type}")
+            logger.debug(f"🔊 Starting text-to-speech conversion for: '{text[:50]}{'...' if len(text) > 50 else ''}'")
+            logger.debug(f"🔍 Message type: {message_type}")
 
             # Create temporary file for audio output
             with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_file:
                 temp_filename = temp_file.name
 
-            logger.info(f"🔍 TTS output file: {temp_filename}")
+            logger.debug(f"🔍 TTS output file: {temp_filename}")
 
             # Configure audio output to file using Speech SDK
             audio_config = speechsdk.audio.AudioOutputConfig(filename=temp_filename)
@@ -402,7 +361,7 @@ class AudioProcessor:
                 audio_config=audio_config
             )
 
-            logger.info("🔄 Synthesizing text to speech...")
+            logger.debug("🔄 Synthesizing text to speech...")
 
             # Synthesize speech
             ssml_text = f"""
@@ -423,16 +382,16 @@ class AudioProcessor:
 
             # Check synthesis result
             if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
-                logger.info("✅ Speech synthesis completed successfully")
+                logger.debug("✅ Speech synthesis completed successfully")
 
                 # Read the generated audio file
-                logger.info("🔄 Reading generated audio file...")
+                logger.debug("🔄 Reading generated audio file...")
                 if os.path.exists(temp_filename) and os.path.getsize(temp_filename) > 0:
                     with open(temp_filename, 'rb') as audio_file:
                         audio_data = audio_file.read()
                         base64_audio = base64.b64encode(audio_data).decode('utf-8')
 
-                    logger.info(f"🔍 Encoded audio file to Base64: {temp_filename} ({len(audio_data)} bytes)")
+                    logger.debug(f"🔍 Encoded audio file to Base64: {temp_filename} ({len(audio_data)} bytes)")
 
                     # Save debug copy if enabled
                     if self.debug_mode:
@@ -469,26 +428,6 @@ class AudioProcessor:
                     logger.info(f"🧹 Cleaned up TTS temporary file: {temp_filename}")
                 except Exception as e:
                     logger.warning(f"⚠️ Failed to clean up temporary file {temp_filename}: {str(e)}")
-
-    def cleanup_temp_files(self, file_paths: list):
-        """Clean up temporary files"""
-        for file_path in file_paths:
-            try:
-                if os.path.exists(file_path):
-                    os.unlink(file_path)
-                    logger.info(f"🧹 Cleaned up temporary file: {file_path}")
-            except Exception as e:
-                logger.warning(f"⚠️ Failed to clean up {file_path}: {str(e)}")
-
-    def cleanup(self):
-        """Clean up debug directory and temporary files"""
-        try:
-            if os.path.exists(self.debug_dir):
-                import shutil
-                shutil.rmtree(self.debug_dir)
-                logger.info(f"🧹 Cleaned up debug directory: {self.debug_dir}")
-        except Exception as e:
-            logger.warning(f"⚠️ Failed to clean up debug directory: {str(e)}")
 
 def get_audio_processor(speech_services) -> AudioProcessor:
     """Factory function to create AudioProcessor instance"""

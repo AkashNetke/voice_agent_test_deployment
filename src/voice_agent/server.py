@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 
 # Import our components
+from database.cosmos_client import get_cosmos_client
 from voice_agent.model import AppState, Request, Response, MessageType
 from voice_agent.session_manager import session_manager, JourneySession
 from voice_agent.journey_booking_service import journey_booking_service
@@ -44,13 +45,12 @@ async def lifespan(app: FastAPI):
     try:
         app_state.speech_services = SpeechServices()
         app_state.audio_processor = get_audio_processor(app_state.speech_services)
+        app_state.cosmos_client = get_cosmos_client()
         logger.info("✅ Speech services initialized successfully")
     except Exception as e:
         logger.warning(f"⚠️  Speech services initialization failed: {str(e)}")
         logger.warning("🔄 Continuing without speech services - text-only mode available")
-        app_state.speech_services = None
-        app_state.audio_processor = None
-    
+
     # Initialize Enhanced LangGraph Booking Agent
     try:
         app_state.enhanced_langgraph_agent = EnhancedLangGraphBookingAgent()
@@ -73,7 +73,7 @@ app = FastAPI(
 )
 
 # Application Dependencies
-app_state = AppState(speech_services=None, audio_processor=None)
+app_state = AppState(speech_services=None, audio_processor=None, cosmos_client=None)
 
 @app.get("/")
 def root():
@@ -101,7 +101,7 @@ def voice_agent(payload: Request = Body(...)):
     Main voice agent endpoint
     Processes voice messages and returns voice responses
     """
-    
+
     # Log incoming request details
     logger.info(f"🔵 INCOMING REQUEST - User: {payload.user_id}, Type: {payload.type.value}")
     logger.info(f"📊 Request details - Session: {payload.user_id}, Name: {payload.user_name}")
@@ -142,7 +142,7 @@ def voice_agent(payload: Request = Body(...)):
                 type=MessageType.EXCEPTION,
                 text_data="Speech services not available - please use text messages"
             )
-            
+
         if not payload.data or not payload.data.strip():
             logger.info("🎤 Empty audio data - treating as welcome trigger")
             user_text = "WELCOME_TRIGGER"  # Special marker for welcome
@@ -276,7 +276,7 @@ def voice_agent_v3(payload: Request = Body(...)):
     Voice agent endpoint v3 - Copy of message2 for development
     Processes voice messages and returns voice responses
     """
-    
+
     # Log incoming request details
     logger.info(f"🔵 INCOMING REQUEST - User: {payload.user_id}, Type: {payload.type.value}")
     logger.info(f"📊 Request details - Session: {payload.user_id}, Name: {payload.user_name}")
@@ -317,7 +317,7 @@ def voice_agent_v3(payload: Request = Body(...)):
                 type=MessageType.EXCEPTION,
                 text_data="Speech services not available - please use text messages"
             )
-            
+
         if not payload.data or not payload.data.strip():
             logger.info("🎤 Empty audio data - treating as welcome trigger")
             user_text = "WELCOME_TRIGGER"  # Special marker for welcome
@@ -444,6 +444,29 @@ def voice_agent_v3(payload: Request = Body(...)):
         text_data=response_text,
         audio_data=response_audio
     )
+
+@app.delete("/user-chat-history")
+def delete_user_chat_history(payload: dict = Body(...)):
+    """
+    User endpoint that accepts JSON payload with user_id
+    """
+    user_id = payload.get("user_id")
+
+
+    if user_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="user_id is required"
+        )
+
+    try:
+        app_state.cosmos_client.delete_user_messages(user_id)
+        return {"message": f"deleted for user_id: {user_id}"}
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
 
 # Error handlers
 @app.exception_handler(Exception)
