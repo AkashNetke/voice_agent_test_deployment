@@ -36,6 +36,16 @@ jobs:
           exit 1
         fi
 
+        if [ -z "${{ secrets.AZURE_SPEECH_KEY_PROD }}" ]; then
+          echo "::error::Required secret AZURE_SPEECH_KEY_PROD is not set"
+          exit 1
+        fi
+
+        if [ -z "${{ secrets.AZURE_SPEECH_REGION_PROD }}" ]; then
+          echo "::error::Required secret AZURE_SPEECH_REGION_PROD is not set"
+          exit 1
+        fi
+
         if [ -z "${{ secrets.AZURE_OPENAI_ENDPOINT_PROD }}" ]; then
           echo "::error::Required secret AZURE_OPENAI_ENDPOINT_PROD is not set"
           exit 1
@@ -43,11 +53,6 @@ jobs:
 
         if [ -z "${{ secrets.AZURE_OPENAI_API_KEY_PROD }}" ]; then
           echo "::error::Required secret AZURE_OPENAI_API_KEY_PROD is not set"
-          exit 1
-        fi
-
-        if [ -z "${{ secrets.AZURE_SPEECH_REGION_PROD }}" ]; then
-          echo "::error::Required secret AZURE_SPEECH_REGION_PROD is not set"
           exit 1
         fi
 
@@ -61,8 +66,13 @@ jobs:
           exit 1
         fi
 
-        if [ -z "${{ secrets.AZURE_SPEECH_KEY_PROD }}" ]; then
-          echo "::error::Required secret AZURE_SPEECH_KEY_PROD is not set"
+        if [ -z "${{ secrets.COSMOS_DB_ENDPOINT_PROD }}" ]; then
+          echo "::error::Required secret COSMOS_DB_ENDPOINT_PROD is not set"
+          exit 1
+        fi
+
+        if [ -z "${{ secrets.COSMOS_DB_KEY_PROD }}" ]; then
+          echo "::error::Required secret COSMOS_DB_KEY_PROD is not set"
           exit 1
         fi
 
@@ -71,13 +81,13 @@ jobs:
           exit 1
         fi
 
-        if [ -z "${{ secrets.COSMOS_DB_ENDPOINT_PROD }}" ]; then
-          echo "::error::Required secret COSMOS_DB_ENDPOINT_PROD is not set"
+        if [ -z "${{ secrets.COSMOS_CHAT_MESSAGE_CONTAINER_PROD }}" ]; then
+          echo "::error::Required secret COSMOS_CHAT_MESSAGE_CONTAINER_PROD is not set"
           exit 1
         fi
 
-        if [ -z "${{ secrets.COSMOS_DB_KEY_PROD }}" ]; then
-          echo "::error::Required secret COSMOS_DB_KEY_PROD is not set"
+        if [ -z "${{ secrets.LOG_LEVEL_PROD }}" ]; then
+          echo "::error::Required secret LOG_LEVEL_PROD is not set"
           exit 1
         fi
 
@@ -97,12 +107,14 @@ jobs:
           --resource-group ${{ env.RESOURCE_GROUP }} \
           --image ${{ env.REGISTRY_URL }}/${{ env.IMAGE_NAME }}:latest \
           --revision-suffix $SHORT_SHA \
-          --replace-env-vars "AZURE_OPENAI_ENDPOINT=${{ secrets.AZURE_OPENAI_ENDPOINT_PROD }}" \
+          --replace-env-vars "AZURE_SPEECH_KEY=${{ secrets.AZURE_SPEECH_KEY_PROD }}" \
             "AZURE_SPEECH_REGION=${{ secrets.AZURE_SPEECH_REGION_PROD }}" \
-            "AZURE_SPEECH_KEY=${{ secrets.AZURE_SPEECH_KEY_PROD }}" \
+            "AZURE_OPENAI_ENDPOINT=${{ secrets.AZURE_OPENAI_ENDPOINT_PROD }}" \
             "AZURE_OPENAI_API_KEY=${{ secrets.AZURE_OPENAI_API_KEY_PROD }}" \
             "AZURE_OPENAI_API_VERSION=${{ secrets.AZURE_OPENAI_API_VERSION_PROD }}" \
             "AZURE_OPENAI_DEPLOYMENT_NAME=${{ secrets.AZURE_OPENAI_DEPLOYMENT_NAME_PROD }}" \
-            "COSMOS_DB_DATABASE=${{ secrets.COSMOS_DB_DATABASE_PROD }}" \
             "COSMOS_DB_ENDPOINT=${{ secrets.COSMOS_DB_ENDPOINT_PROD }}" \
-            "COSMOS_DB_KEY=${{ secrets.COSMOS_DB_KEY_PROD }}"
+            "COSMOS_DB_KEY=${{ secrets.COSMOS_DB_KEY_PROD }}" \
+            "COSMOS_DB_DATABASE=${{ secrets.COSMOS_DB_DATABASE_PROD }}" \
+            "COSMOS_CHAT_MESSAGE_CONTAINER=${{ secrets.COSMOS_CHAT_MESSAGE_CONTAINER_PROD }}" \
+            "LOG_LEVEL=${{ secrets.LOG_LEVEL_PROD }}"

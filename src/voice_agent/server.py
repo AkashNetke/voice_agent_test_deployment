@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 # Import our components
 from database.cosmos_client import get_cosmos_client
 from voice_agent.model import AppState, Request, Response, MessageType
-from voice_agent.session_manager import session_manager, JourneySession
+from voice_agent.session_manager import session_manager
 from voice_agent.journey_booking_service import journey_booking_service
 from voice_agent.enhanced_langgraph_agent import EnhancedLangGraphBookingAgent
 from voice_agent.audio_utils import get_audio_processor
@@ -22,6 +22,12 @@ from voice_agent.agent.speech_services import SpeechServices
 
 # Load environment variables
 load_dotenv()
+
+# Set global logging level
+import logging
+import os
+log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(level=getattr(logging, log_level))
 
 # Configure logging
 logging.basicConfig(

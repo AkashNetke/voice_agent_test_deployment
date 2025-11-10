@@ -20,7 +20,8 @@ class CosmosDBClient:
         """Initialize the Cosmos DB client."""
         self.endpoint = os.getenv("COSMOS_DB_ENDPOINT")
         self.key = os.getenv("COSMOS_DB_KEY")
-        self.database_name = os.getenv("COSMOS_DB_DATABASE", "AgentChatHistory")
+        self.database_name = os.getenv("COSMOS_DB_DATABASE")
+        self.container_name = os.getenv("COSMOS_CHAT_MESSAGE_CONTAINER")
 
         if not self.endpoint or not self.key:
             raise ValueError("COSMOS_DB_ENDPOINT and COSMOS_DB_KEY must be set in environment variables")
@@ -43,18 +44,15 @@ class CosmosDBClient:
                 self.database = self.client.create_database(self.database_name)
                 logger.info(f"Created new database: {self.database_name}")
 
-            # Only need one container now: chat_messages
-            # Remove chat_sessions container completely
-
             try:
                 # Check if container exists first
                 try:
-                    self.messages_container = self.database.get_container_client("chat_messages")
-                    logger.info("Using existing chat_messages container")
+                    self.messages_container = self.database.get_container_client(self.container_name)
+                    logger.info("Using existing chat messages container")
                 except:
                     # Container doesn't exist, create it
                     self.messages_container = self.database.create_container(
-                        id="chat_messages",
+                        id=self.container_name,
                         partition_key=PartitionKey(path="/user_id"),  # Partition by user_id
                         offer_throughput=400,
                         default_ttl=86400  # 24 hours in seconds
@@ -64,11 +62,11 @@ class CosmosDBClient:
                 if "serverless" in str(e).lower() or "offer throughput" in str(e).lower():
                     logger.info("Serverless account detected, creating container without throughput")
                     try:
-                        self.messages_container = self.database.get_container_client("chat_messages")
-                        logger.info("Using existing chat_messages container")
+                        self.messages_container = self.database.get_container_client(self.container_name)
+                        logger.info("Using existing chat messages container")
                     except:
                         self.messages_container = self.database.create_container(
-                            id="chat_messages",
+                            id=self.container_name,
                             partition_key=PartitionKey(path="/user_id"),
                             default_ttl=86400  # 24 hours in seconds
                         )

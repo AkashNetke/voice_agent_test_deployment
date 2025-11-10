@@ -80,6 +80,16 @@ jobs:
           exit 1
         fi
 
+        if [ -z "${{ secrets.COSMOS_CHAT_MESSAGE_CONTAINER }}" ]; then
+          echo "::error::Required secret COSMOS_CHAT_MESSAGE_CONTAINER is not set"
+          exit 1
+        fi
+
+        if [ -z "${{ secrets.LOG_LEVEL }}" ]; then
+          echo "::error::Required secret LOG_LEVEL is not set"
+          exit 1
+        fi
+
         echo "All required secrets are set"
 
     - name: Log in to Azure
@@ -125,4 +135,6 @@ jobs:
             "AZURE_OPENAI_DEPLOYMENT_NAME=${{ secrets.AZURE_OPENAI_DEPLOYMENT_NAME }}" \
             "COSMOS_DB_DATABASE=${{ secrets.COSMOS_DB_DATABASE }}" \
             "COSMOS_DB_ENDPOINT=${{ secrets.COSMOS_DB_ENDPOINT }}" \
-            "COSMOS_DB_KEY=${{ secrets.COSMOS_DB_KEY }}"
+            "COSMOS_DB_KEY=${{ secrets.COSMOS_DB_KEY }}" \
+            "COSMOS_CHAT_MESSAGE_CONTAINER=${{ secrets.COSMOS_CHAT_MESSAGE_CONTAINER }}" \
+            "LOG_LEVEL=${{ secrets.LOG_LEVEL }}"
