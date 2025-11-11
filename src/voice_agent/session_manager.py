@@ -27,7 +27,7 @@ class JourneySession:
     journey_messages: list = field(default_factory=list)
     existing_address_types: list = field(default_factory=list)
     greeting_shown: bool = False
-    
+
     # AI booking service attributes
     missing_fields: list = field(default_factory=list)
 
@@ -92,6 +92,23 @@ class SessionManager:
 
             # Create new session
             return self._create_session(user_id, user_name, auth_token)
+
+    def initialize_session(self, session: JourneySession) -> str:
+        """Initialize a new journey booking session with greeting"""
+        if not session.greeting_shown:
+            greeting = self.get_time_based_greeting()
+            greeting_message = f"{greeting}! Welcome to Travel Hands journey booking. Where would you like to go today?"
+
+            session.journey_messages.append({"role": "assistant", "content": greeting_message})
+            session.journey_step = "destination"
+            session.greeting_shown = True
+
+            return greeting_message
+
+        # Return current step information if already initialized
+        current_step = session.journey_step or "destination"
+        step_description = self.step_mapping.get(current_step, "Continue your journey booking")
+        return f"Welcome back! {step_description}"
 
     def _cleanup_expired_sessions(self):
         """Remove expired sessions (called periodically)"""

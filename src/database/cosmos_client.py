@@ -46,33 +46,16 @@ class CosmosDBClient:
 
             try:
                 # Check if container exists first
-                try:
-                    self.messages_container = self.database.get_container_client(self.container_name)
-                    logger.info("Using existing chat messages container")
-                except:
-                    # Container doesn't exist, create it
-                    self.messages_container = self.database.create_container(
-                        id=self.container_name,
-                        partition_key=PartitionKey(path="/user_id"),  # Partition by user_id
-                        offer_throughput=400,
-                        default_ttl=86400  # 24 hours in seconds
-                    )
-                    logger.info("Messages container created with throughput and 24h TTL")
-            except Exception as e:
-                if "serverless" in str(e).lower() or "offer throughput" in str(e).lower():
-                    logger.info("Serverless account detected, creating container without throughput")
-                    try:
-                        self.messages_container = self.database.get_container_client(self.container_name)
-                        logger.info("Using existing chat messages container")
-                    except:
-                        self.messages_container = self.database.create_container(
-                            id=self.container_name,
-                            partition_key=PartitionKey(path="/user_id"),
-                            default_ttl=86400  # 24 hours in seconds
-                        )
-                        logger.info("Messages container created (serverless) with 24h TTL")
-                else:
-                    raise
+                self.messages_container = self.database.get_container_client(self.container_name)
+                logger.info("Using existing chat messages container")
+            except:
+                # Container doesn't exist, create it
+                self.messages_container = self.database.create_container(
+                    id=self.container_name,
+                    partition_key=PartitionKey(path="/user_id"),  # Partition by user_id
+                    default_ttl=86400  # 24 hours in seconds
+                )
+                logger.info("Messages container created with throughput and 24h TTL")
 
         except Exception as e:
             logger.error(f"Failed to initialize database: {e}")

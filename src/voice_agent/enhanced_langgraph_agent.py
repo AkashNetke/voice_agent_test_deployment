@@ -15,9 +15,9 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import StateGraph
 from langgraph.checkpoint.memory import MemorySaver
 
-from voice_agent.agent.journey_booking import get_existing_addresses, save_address_to_api, save_address_to_api_simple, search_volunteers_api
+from voice_agent.travel_hands_client import get_existing_addresses, save_address_to_api, save_address_to_api_simple, search_volunteers_api
 from voice_agent.session_manager import JourneySession
-from services.session_service import get_chat_history_service
+from voice_agent.chat_history_service import get_chat_history_service
 
 logger = logging.getLogger(__name__)
 
@@ -181,7 +181,7 @@ CONTEXT-AWARE ROUTING RULES (priority order):
      * User is likely responding to a question (e.g., "yes", "no", "none", short answers, confirmations)
      * User is providing requested information (addresses, dates, times, notes)
      * Route to: booking_agent (UNLESS user explicitly changes topic)
-   
+
    - If status_agent was last active AND user is continuing status discussion:
      * Route to: status_agent
 
@@ -189,7 +189,7 @@ CONTEXT-AWARE ROUTING RULES (priority order):
    - User EXPLICITLY requests different action:
      * "check status", "cancel booking", "help", "start over", "new booking"
      * Route to appropriate agent based on new request
-   
+
    - User greets again or asks general questions:
      * "hello", "hi", "what can you do", "help"
      * Route to: general_agent

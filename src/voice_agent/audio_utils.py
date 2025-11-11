@@ -11,7 +11,7 @@ import json
 import subprocess
 from typing import Optional, Dict
 import azure.cognitiveservices.speech as speechsdk
-from voice_agent.agent.speech_services import SpeechServices
+from voice_agent.speech_services import SpeechServices
 import logging
 
 logger = logging.getLogger(__name__)
