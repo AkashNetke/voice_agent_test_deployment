@@ -11,7 +11,6 @@ import json
 import subprocess
 from typing import Optional, Dict
 import azure.cognitiveservices.speech as speechsdk
-from voice_agent.speech_services import SpeechServices
 import logging
 
 logger = logging.getLogger(__name__)
@@ -134,8 +133,7 @@ class AudioProcessor:
     Uses the REST API for speech-to-text (more reliable) and Speech SDK for text-to-speech.
     """
 
-    def __init__(self, speech_services: SpeechServices, debug_mode: bool = False):
-        self.speech_services = speech_services
+    def __init__(self, debug_mode: bool = False):
         self.debug_mode = debug_mode
         self.debug_dir = tempfile.mkdtemp(prefix="voice_agent_debug_")
 
@@ -146,9 +144,24 @@ class AudioProcessor:
         if not self.speech_key or not self.speech_region:
             raise ValueError("Azure Speech Service key and region must be configured")
 
+        # Initialize Azure Speech SDK configuration for TTS
+        logger.info(f"🔑 Initializing Azure Speech Services...")
+        logger.info(f"🌍 Region: {self.speech_region}")
+        logger.info(f"🔐 API Key: {'***' + (self.speech_key[-4:] if self.speech_key else 'None')}")
+
+        self.speech_config = speechsdk.SpeechConfig(
+            subscription=self.speech_key,
+            region=self.speech_region
+        )
+        self.speech_config.speech_recognition_language = "en-US"
+        self.speech_config.set_speech_synthesis_output_format(
+            speechsdk.SpeechSynthesisOutputFormat.Audio16Khz32KBitRateMonoMp3
+        )
+
         # REST API endpoint for speech-to-text (Microsoft's recommended approach)
         self.stt_endpoint = f"https://{self.speech_region}.stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1"
 
+        logger.info(f"✅ Azure Speech Services initialized successfully")
         logger.info(f"🔍 AudioProcessor initialized with debug mode {'enabled' if self.debug_mode else 'disabled'}")
         if self.debug_mode:
             logger.info(f"🔍 Debug files will be saved to: {self.debug_dir}")
@@ -218,7 +231,7 @@ class AudioProcessor:
                 # Check final WAV file format
                 if len(decoded_audio_data) >= 16:
                     header = decoded_audio_data[:16]
-                    logger.debug(f"🔍 Final audio file size: {len(decoded_audio_data)} bytes")
+                    logger.debug(f"🔍 Final decoded audio data size: {len(decoded_audio_data)} bytes")
                     logger.debug(f"🔍 Final audio header (first 16 bytes): {header}")
                     logger.debug(f"🔍 Final header as hex: {header.hex()}")
 
@@ -357,7 +370,7 @@ class AudioProcessor:
 
             # Create speech synthesizer
             speech_synthesizer = speechsdk.SpeechSynthesizer(
-                speech_config=self.speech_services.speech_config,
+                speech_config=self.speech_config,
                 audio_config=audio_config
             )
 
@@ -429,6 +442,6 @@ class AudioProcessor:
                 except Exception as e:
                     logger.warning(f"⚠️ Failed to clean up temporary file {temp_filename}: {str(e)}")
 
-def get_audio_processor(speech_services) -> AudioProcessor:
+def get_audio_processor(debug_mode: bool = False) -> AudioProcessor:
     """Factory function to create AudioProcessor instance"""
-    return AudioProcessor(speech_services)
+    return AudioProcessor(debug_mode=debug_mode)

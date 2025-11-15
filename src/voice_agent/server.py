@@ -17,7 +17,6 @@ from voice_agent.model import AppState, Request, Response, MessageType
 from voice_agent.session_manager import session_manager
 from voice_agent.enhanced_langgraph_agent import EnhancedLangGraphBookingAgent
 from voice_agent.audio_utils import get_audio_processor
-from voice_agent.speech_services import SpeechServices
 
 # Load environment variables
 load_dotenv()
@@ -46,15 +45,14 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("🚀 Starting Voice Agent API...")
 
-    # Try to initialize speech services, but continue if it fails
+    # Try to initialize audio processor (includes speech services), but continue if it fails
     try:
-        app_state.speech_services = SpeechServices()
-        app_state.audio_processor = get_audio_processor(app_state.speech_services)
+        app_state.audio_processor = get_audio_processor(debug_mode=False)
         app_state.cosmos_client = get_cosmos_client()
-        logger.info("✅ Speech services initialized successfully")
+        logger.info("✅ Audio processor and speech services initialized successfully")
     except Exception as e:
-        logger.warning(f"⚠️  Speech services initialization failed: {str(e)}")
-        logger.warning("🔄 Continuing without speech services - text-only mode available")
+        logger.warning(f"⚠️  Audio processor initialization failed: {str(e)}")
+        logger.warning("🔄 Continuing without audio processor - text-only mode available")
 
     # Initialize Enhanced LangGraph Booking Agent
     try:
@@ -78,7 +76,7 @@ app = FastAPI(
 )
 
 # Application Dependencies
-app_state = AppState(speech_services=None, audio_processor=None, cosmos_client=None)
+app_state = AppState(audio_processor=None, cosmos_client=None)
 
 @app.get("/")
 def root():
