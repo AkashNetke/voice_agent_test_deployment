@@ -96,7 +96,7 @@ class SessionManager:
     def initialize_session(self, session: JourneySession) -> str:
         """Initialize a new journey booking session with greeting"""
         if not session.greeting_shown:
-            greeting = self.get_time_based_greeting()
+            greeting = self._get_time_based_greeting()
             greeting_message = f"{greeting}! Welcome to Travel Hands journey booking. Where would you like to go today?"
 
             session.journey_messages.append({"role": "assistant", "content": greeting_message})
@@ -109,6 +109,16 @@ class SessionManager:
         current_step = session.journey_step or "destination"
         step_description = self.step_mapping.get(current_step, "Continue your journey booking")
         return f"Welcome back! {step_description}"
+
+    def _get_time_based_greeting(self) -> str:
+        current_hour = datetime.now().hour
+
+        if 5 <= current_hour < 12:
+            return "Good morning"
+        elif 12 <= current_hour < 17:
+            return "Good afternoon"
+        else:
+            return "Good evening"
 
     def _cleanup_expired_sessions(self):
         """Remove expired sessions (called periodically)"""
