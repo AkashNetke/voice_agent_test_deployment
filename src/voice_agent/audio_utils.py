@@ -218,7 +218,7 @@ class AudioProcessor:
                 # Check final WAV file format
                 if len(decoded_audio_data) >= 16:
                     header = decoded_audio_data[:16]
-                    logger.debug(f"🔍 Final audio file size: {os.path.getsize(temp_filename)} bytes")
+                    logger.debug(f"🔍 Final audio file size: {len(decoded_audio_data)} bytes")
                     logger.debug(f"🔍 Final audio header (first 16 bytes): {header}")
                     logger.debug(f"🔍 Final header as hex: {header.hex()}")
 
