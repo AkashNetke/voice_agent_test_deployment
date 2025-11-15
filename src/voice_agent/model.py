@@ -33,4 +33,4 @@ class AppState:
     speech_services: Optional[SpeechServices]
     audio_processor: Optional[AudioProcessor]
     enhanced_langgraph_agent: Optional[EnhancedLangGraphBookingAgent] = None
-    cosmos_client: Optional[CosmosDBClient]
+    cosmos_client: Optional[CosmosDBClient] = None
