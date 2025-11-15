@@ -90,6 +90,11 @@ jobs:
           exit 1
         fi
 
+        if [ -z "${{ secrets.TRAVEL_HANDS_API_BASE_URL }}" ]; then
+          echo "::error::Required secret TRAVEL_HANDS_API_BASE_URL is not set"
+          exit 1
+        fi
+
         echo "All required secrets are set"
 
     - name: Log in to Azure
@@ -137,4 +142,5 @@ jobs:
             "COSMOS_DB_ENDPOINT=${{ secrets.COSMOS_DB_ENDPOINT }}" \
             "COSMOS_DB_KEY=${{ secrets.COSMOS_DB_KEY }}" \
             "COSMOS_CHAT_MESSAGE_CONTAINER=${{ secrets.COSMOS_CHAT_MESSAGE_CONTAINER }}" \
-            "LOG_LEVEL=${{ secrets.LOG_LEVEL }}"
+            "LOG_LEVEL=${{ secrets.LOG_LEVEL }}" \
+            "TRAVEL_HANDS_API_BASE_URL=${{ secrets.TRAVEL_HANDS_API_BASE_URL }}"
