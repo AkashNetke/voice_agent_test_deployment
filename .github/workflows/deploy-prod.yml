@@ -15,7 +15,7 @@ env:
   # Container App ENV
   CONTAINER_APP_ENV: todo
   # Azure Resource Group name for production
-  RESOURCE_GROUP: th-voice-agent-prod
+  RESOURCE_GROUP: th-voice-agent
   # Container image name
   IMAGE_NAME: voice-agent
 
