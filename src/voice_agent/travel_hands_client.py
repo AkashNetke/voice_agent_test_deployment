@@ -442,7 +442,7 @@ def handle_confirm_selected_volunteer(user_id, auth_token, journey_data, selecte
         "totalTimeForVolunteer": journey_data.get("total_time_volunteer", "")
     }
 
-    api_endpoint = f"http://localhost:8081/api/vip/requestJourney/{user_id}"
+    api_endpoint = f"{travel_hands_api_base_url}/api/vip/requestJourney/{user_id}"
     headers = {"Authorization": f"Bearer {auth_token}", "Content-Type": "application/json"}
 
     logging.info("\n" + "="*90)
