@@ -426,6 +426,68 @@ def search_volunteers_api(session, journey_data):
             "message": f"Unexpected error while searching for volunteers: {str(e)}"
         }
 
+def handle_confirm_selected_volunteer(user_id, auth_token, journey_data, selected_volunteer):
+    """Handles real backend API call for saving journey"""
+
+    payload = {
+        "scheduleId": selected_volunteer["scheduleId"],
+        "searchId": selected_volunteer["searchId"],
+        "pickupAddressId": journey_data["pickup_address_id"],
+        "destinationAddressId": journey_data["destination_address_id"],
+        "requestDate": journey_data["journey_date"],
+        "requestTime": journey_data["pickup_time"],
+        "journeyEndTime": journey_data.get("journey_end_time", ""),
+        "journeyNote": journey_data.get("journey_notes", ""),
+        "journeyReason": journey_data.get("journey_reason", ""),
+        "totalTimeForVolunteer": journey_data.get("total_time_volunteer", "")
+    }
+
+    api_endpoint = f"http://localhost:8081/api/vip/requestJourney/{user_id}"
+    headers = {"Authorization": f"Bearer {auth_token}", "Content-Type": "application/json"}
+
+    logging.info("\n" + "="*90)
+    logging.info("📌 CALLING CONFIRM SELECTED VOLUNTEER API")
+    logging.info(f"🔗 Endpoint: {api_endpoint}")
+    logging.info(f"📦 Payload: {payload}")
+    logging.info("="*90)
+
+    try:
+        response = requests.post(api_endpoint, headers=headers, json=payload, timeout=10.0)
+        response.raise_for_status()
+
+        result = response.json()
+        logging.info(f"✅ CONFIRM VOLUNTEER RESPONSE: {result}")
+
+        return {"success": True, "response": result}
+
+    except requests.HTTPStatusError as e:
+        logging.error(f"❌ Backend rejected request: {e.response.status_code} | {e.response.text}")
+        return {"success": False, "message": f"Backend error: {e.response.text}"}
+
+    except Exception as e:
+        logging.error(f"❌ Unexpected error: {str(e)}", exc_info=True)
+        return {"success": False, "message": f"Internal error: {str(e)}"}
+
+
+def validate_confirm_volunteer_input( journey_data, selected_volunteer):
+    """Validates inputs before calling the backend save API"""
+    
+    if not selected_volunteer:
+        return {"valid": False, "error": "No volunteer selected."}
+
+    required_keys = ["scheduleId", "searchId"]
+    for key in required_keys:
+        if key not in selected_volunteer:
+            return {"valid": False, "error": f"Missing required volunteer field: {key}"}
+
+    required_journey_keys = ["pickup_address_id", "destination_address_id", "journey_date", "pickup_time"]
+    for key in required_journey_keys:
+        if key not in journey_data:
+            return {"valid": False, "error": f"Missing journey field: {key}"}
+
+    return {"valid": True}
+
+
 def get_existing_addresses(session):
     """Fetch existing saved addresses for the user from Travel Hands API"""
     try:

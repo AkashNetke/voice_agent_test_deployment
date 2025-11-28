@@ -8,6 +8,8 @@ import logging
 from typing import Dict, Any, List, Optional, TypedDict
 from datetime import datetime
 
+import requests
+
 from langgraph.prebuilt import create_react_agent
 from langchain_openai import AzureChatOpenAI
 from langchain_core.tools import tool
@@ -15,7 +17,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import StateGraph
 from langgraph.checkpoint.memory import MemorySaver
 
-from voice_agent.travel_hands_client import get_existing_addresses, save_address_to_api, save_address_to_api_simple, search_volunteers_api
+from voice_agent.travel_hands_client import get_existing_addresses, handle_confirm_selected_volunteer, save_address_to_api, save_address_to_api_simple, search_volunteers_api, validate_confirm_volunteer_input
 from voice_agent.session_manager import JourneySession
 from voice_agent.chat_history_service import get_chat_history_service
 
@@ -88,7 +90,9 @@ class EnhancedLangGraphBookingAgent:
                     self._create_map_volunteer_time_tool(),
                     self._create_extract_journey_reason_tool(),
                     self._create_search_volunteers_tool(),
-                    self._create_validate_journey_tool()
+                    self._create_validate_journey_tool(),
+                    self._create_confirm_selected_volunteer_tool(),
+                    self._create_get_tfl_route_tool()
                 ],
                 "status": [
                     self._create_get_journey_status_tool(),
@@ -336,7 +340,9 @@ Available tools:
 - map_volunteer_time: Map user input to volunteer time options
 - extract_journey_reason: Extract journey reason (Flexible/Important/Very Important)
 - search_volunteers_and_save_journey: Search volunteers when all info collected (requires user_id, auth_token, user_name, pickup_address_id, destination_address_id, pickup_address_name, destination_address_name, journey_date, pickup_time, journey_reason, total_time_volunteer)
+-confirm_selected_volunteer: Confirm and save journey with selected volunteer (requires user_id, auth_token, journey_data, selected_volunteer with scheduleId and searchId)
 - validate_journey_data: Validate complete journey data
+- get_tfl_route : Get route information from TFL API (requires origin and destination)
 
 Required fields:
 - pickup_address: Pickup location name
@@ -416,7 +422,12 @@ Process user input by:
 5. Using tools to extract journey reason (when user mentions flexible, important, urgent, etc.)
 6. Using AI reasoning to collect missing information progressively
 7. When ALL required fields are complete, ask for user to confirm all the journey details first and then call search_volunteers_and_save_journey tool
-8. When replying user with date, you need to be aware the date is in DD-MM-YYYY (Day-Month-Year) format, you need to answer it in a user friendly format.
+8. After calling search_volunteers_and_save_journey, present available volunteers to user for selection
+9. After user selects volunteer, extract the volunteer's scheduleId and searchId on your own from the selected volunteer data and call confirm_selected_volunteer tool to save the journey
+10. When replying user with date, you need to be aware the date is in DD-MM-YYYY (Day-Month-Year) format, you need to answer it in a user friendly format.
+11. If user wants to know the route, use get_tfl_route tool to get route information from TFL API
+12. The route feature is only for providing travel directions to the user, don't mix it with the volunteer booking process.
+13. If user asks for travel directions or route (e.g., “how do I reach?”, “give me route”, “what is the path?”), dont ask if they want to book a journey with those routes, just provide the route information.
 
 JOURNEY REASON EXTRACTION:
 When user mentions journey importance (flexible, important, urgent, etc.), ALWAYS use the extract_journey_reason tool to classify it properly.
@@ -459,9 +470,15 @@ IMPORTANT:
 8. If ALL required fields are complete, verify all the journey details with the user and ask for confirmation before calling search_volunteers_and_save_journey tool
 9. Always ask about journey notes - if user hasn't provided any notes, ask if they want to add any comments or special instructions
 10. When user confirms (says "yes", "looks good", "thanks", etc.), immediately call search_volunteers_and_save_journey tool
-11. Keep responses concise - only show full journey details at final confirmation
-12. When replying user with date, you need to be aware the date is in DD-MM-YYYY (Day-Month-Year) format, you need to answer it in a user friendly format.
-
+11. If no volunteers found then inform user politely and tell them that your journey is sent to our customer support team for further assistance.
+12. Let the user to select from available volunteers after calling search_volunteers_and_save_journey tool
+13. After the user selects volunteer, extract the volunteer's scheduleId and searchId from the selected volunteer data and call confirm_selected_volunteer tool to save the journey.
+14. Don't ask user to give scheduleId or searchId - extract these on your own from the selected volunteer data.
+15. Keep responses concise - only show full journey details at final confirmation
+16. When replying user with date, you need to be aware the date is in DD-MM-YYYY (Day-Month-Year) format, you need to answer it in a user friendly format.
+17.If the user wants travel directions or route (e.g., “how do I reach?”, “give me route”, “what is the path?”), 
+   → call get_tfl_route tool with origin as pickup_address_name and destination as destination_address_name to get route information from TFL API and present it to the user.
+18. The route feature is only for providing travel directions to the user, don't mix it with the volunteer booking process.   
 CHECK: Are all required fields complete?
 - If YES: Present a summary of all journey details and ask for user confirmation before calling search_volunteers_and_save_journey tool
 - If NO: Ask for the next missing field in a concise way (don't repeat what you already know)
@@ -488,6 +505,35 @@ Process the user's booking request and collect any missing information.
                 response_text = "I can help you book a journey. What would you like to do?"
 
             logger.info(f"✅ BOOKING AGENT RESPONSE: {response_text[:150]}...")
+
+            #  # --- NEW INTEGRATION: Auto-confirm volunteer if VIP confirms ---
+            # confirmation_keywords = ["yes", "yeah", "yep", "sure", "okay", "ok", "looks good", "perfect", "correct", "thanks", "thank you"]
+            # if any(word in user_input.lower() for word in confirmation_keywords):
+            #     # Check if available volunteers exist
+            #     available_vols = journey_data.get("available_volunteers", [])
+            #     if available_vols:
+            #         # For demo: pick the first volunteer if no specific name provided
+            #         selected_volunteer = available_vols[0]
+            #         logger.info(f"🎯 VIP confirmed volunteer: {selected_volunteer['volunteerName']} (scheduleId={selected_volunteer['schedule']['id']})")
+
+            #         # Call the confirm_selected_volunteer tool
+            #         confirm_tool = self._create_confirm_selected_volunteer_tool()
+            #         confirm_response = confirm_tool(
+            #             user_id=user_id,
+            #             auth_token=auth_token,
+            #             journey_data=journey_data,
+            #             selected_volunteer={
+            #                 "scheduleId": selected_volunteer["schedule"]["id"],
+            #                 "searchId": selected_volunteer["searchId"]
+            #             }
+            #         )
+
+            #         if confirm_response.get("success"):
+            #             logger.info("💾 Journey successfully saved with selected volunteer")
+            #             response_text += f"\n✅ Journey booked with volunteer {selected_volunteer['volunteerName']}."
+            #         else:
+            #             logger.error("❌ Failed to save journey automatically")
+            #             response_text += "\n❌ Failed to save journey automatically."
 
             # Add response to messages
             updated_messages = messages + [{"role": "assistant", "content": response_text}]
@@ -1092,11 +1138,28 @@ Return ONLY the classified reason (Flexible, Important, or Very Important), no a
 
         return extract_journey_reason
 
+   
     def _create_search_volunteers_tool(self):
         """Create tool for searching volunteers"""
         @tool
-        def search_volunteers_and_save_journey(user_id: int, auth_token: str, user_name: str, pickup_address_id: int, destination_address_id: int, pickup_address_name: str, destination_address_name: str, journey_date: str, pickup_time: str, journey_reason: str, total_time_volunteer: str, journey_notes: str = "") -> str:
-            """Search for volunteers and save journey details to the Travel Hands API"""
+        def search_volunteers_and_save_journey(
+            user_id: int,
+            auth_token: str,
+            user_name: str,
+            pickup_address_id: int,
+            destination_address_id: int,
+            pickup_address_name: str,
+            destination_address_name: str,
+            journey_date: str,
+            pickup_time: str,
+            journey_reason: str,
+            total_time_volunteer: str,
+            journey_notes: str = ""
+        ) -> dict:
+            """
+            Search for volunteers and return the list of volunteers.
+            Also save journey details if required.
+            """
             try:
                 session = JourneySession(
                     user_id=user_id,
@@ -1106,9 +1169,9 @@ Return ONLY the classified reason (Flexible, Important, or Very Important), no a
 
                 journey_data = {
                     "pickup_address_id": pickup_address_id,
-                    "dest_address_id": destination_address_id,  # Note: API expects dest_address_id, not destination_address_id
-                    "pickup_address_type": pickup_address_name,  # Add address names for API payload
-                    "dest_address_type": destination_address_name,  # Add address names for API payload
+                    "dest_address_id": destination_address_id,
+                    "pickup_address_type": pickup_address_name,
+                    "dest_address_type": destination_address_name,
                     "journey_date": journey_date,
                     "pickup_time": pickup_time,
                     "journey_reason": journey_reason,
@@ -1116,18 +1179,65 @@ Return ONLY the classified reason (Flexible, Important, or Very Important), no a
                     "journey_notes": journey_notes
                 }
 
+                # Call the volunteer search API
                 result = search_volunteers_api(session, journey_data)
 
                 if result.get("success", False):
-                    return f"✅ Journey booked successfully! {result.get('message', '')}"
+                    journey_data["available_volunteers"] = result.get("volunteers", [])
+                    logger.info(f"💡 Saved {len(journey_data['available_volunteers'])} volunteers in journey_data")
+
+                    return {
+                        "success": True,
+                        "message": result.get("message", ""),
+                        "volunteers": result.get("volunteers", []),
+                        "raw_response": result.get("response", {})
+                    }
                 else:
-                    return f"❌ Error booking journey: {result.get('error', 'Unknown error')}"
+                    return {
+                        "success": False,
+                        "message": result.get("message", "Error searching for volunteers"),
+                        "error": result.get("error", None),
+                        "volunteers": []
+                    }
 
             except Exception as e:
                 logger.error(f"Error in search_volunteers_and_save_journey tool: {str(e)}")
-                return f"Error booking journey: {str(e)}"
+                return {
+                    "success": False,
+                    "message": f"Unexpected error: {str(e)}",
+                    "volunteers": []
+                }
 
         return search_volunteers_and_save_journey
+
+    def _create_confirm_selected_volunteer_tool(self):
+        """Create tool for confirming selected volunteer and saving journey"""
+
+        @tool
+        def confirm_selected_volunteer(
+            user_id: int,
+            auth_token: str,
+            journey_data: dict,
+            selected_volunteer: dict
+        ) -> dict:
+            """
+            Confirm the selected volunteer and save the journey in the database.
+            """
+            try:
+                # Validation moved to a small helper (cleaner logic)
+                validation = validate_confirm_volunteer_input(journey_data, selected_volunteer)
+
+                if not validation["valid"]:
+                    return {"success": False, "message": validation["error"]}
+
+                # 🚀 Now call the real handler method
+                return handle_confirm_selected_volunteer(user_id, auth_token, journey_data, selected_volunteer)
+
+            except Exception as e:
+                logger.error(f"❌ Error in confirm_selected_volunteer tool: {str(e)}", exc_info=True)
+                return {"success": False, "message": f"Internal error: {str(e)}"}
+
+        return confirm_selected_volunteer
 
     def _create_validate_journey_tool(self):
         """Create tool for validating journey data"""
@@ -1194,3 +1304,97 @@ Return ONLY the classified reason (Flexible, Important, or Very Important), no a
             return "❌ Journey canceled"
 
         return cancel_journey
+
+    def _create_get_tfl_route_tool(self):
+        """Create tool to fetch and summarize TfL route info"""
+
+        @tool
+        def get_tfl_route(pickup: str, destination: str) -> str:
+            """
+            Fetches public transport route between pickup and destination from TfL API,
+            then asks the AI model to generate a human-friendly summary.
+            """
+            logger.info("🛠️ [get_tfl_route] Tool called with pickup='%s', destination='%s'", pickup, destination)
+
+            try:
+                # ✅ Step 1: Construct API URL
+                url = f"https://api.tfl.gov.uk/Journey/JourneyResults/{pickup}/to/{destination}"
+                logger.info("🌐 [get_tfl_route] Calling TfL API: %s", url)
+
+                # ✅ Step 2: Fetch route data
+                response = requests.get(url, timeout=30)
+                logger.info("📡 [get_tfl_route] TfL API response status: %s", response.status_code)
+
+                response.raise_for_status()
+                data = response.json()
+                logger.debug("📦 [get_tfl_route] TfL API JSON received: %s", str(data)[:800])  # limit length
+
+                # ✅ Step 3: Build AI summarization prompt
+                ai_prompt = f"""
+    You are an accessibility assistant for visually impaired travelers.
+    Given the raw journey data from TFL, create a short, clear, and friendly spoken-style summary.
+    You must provide a highly detailed explanation of the entire journey using all available information from the TfL data.
+
+    Include:
+    - Total travel time
+    - Estimated arrival time if available
+    - Total cost if provided
+    - Every transport segment with clear human language
+    - Line names, directions, number of stops, key stations passed
+    - Walking distances and approximate walking time
+    - Accessibility notes such as step-free access, lifts, or level boarding if mentioned
+    - Any changes or transfers, explained simply
+    - Mention if delays or disruptions exist
+
+    Present the journey in simple numbered steps like:
+    1. Walk
+    2. Take the tube
+    3. Change to another line
+    4. Exit and walk to the destination
+
+    Keep sentences short and natural, as if you are speaking to the user.
+    Avoid technical terms like “legs”, “modes”, “interchange”, “path”, or “JSON fields”.
+    Do not use emojis or icons.
+    Do not invent information. Only use what is present in the TfL data.
+
+    After the steps, give a friendly closing summary that repeats:
+    - total duration
+    - cost
+    - a simple recommendation (e.g., “This route is straightforward and does not require many changes.”)
+
+    Example style:
+    Your journey from Archway to Westminster takes about 42 minutes.
+    1. Start by walking 200 meters to Archway Station.
+    2. Take the Northern Line towards Kennington.
+    3. Change at Euston for the Victoria Line towards Brixton and continue to Westminster.
+    The total cost is about £2.80, and you’ll arrive around 10:25 AM.
+
+    USER REQUEST:
+    From: {pickup}
+    To: {destination}
+
+    TFL JSON RESPONSE:
+    {data}
+
+    Return only a natural, human-readable summary. Avoid technical terms.
+    """
+                logger.info("🧠 [get_tfl_route] Sending TfL data to LLM for summarization...")
+
+                # ✅ Step 4: Get AI summarization
+                ai_response = self.llm.invoke([HumanMessage(content=ai_prompt)])
+                logger.info("✅ [get_tfl_route] LLM response received")
+
+                if ai_response and hasattr(ai_response, 'content'):
+                    summary = ai_response.content.strip()
+                    logger.info("🗺️ [get_tfl_route] Successfully generated TfL summary",ai_response)
+                    logger.debug("📝 [get_tfl_route] Summary: %s", summary)
+                    return summary
+
+                logger.warning("⚠️ [get_tfl_route] LLM returned empty or invalid response")
+                return "⚠️ Could not generate summary from TfL data."
+
+            except Exception as e:
+                logger.exception("❌ [get_tfl_route] Error fetching or summarizing route: %s", str(e))
+                return f"⚠️ Error fetching route: {str(e)}"
+
+        return get_tfl_route    
