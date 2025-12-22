@@ -10,6 +10,8 @@ from datetime import datetime, timedelta
 import threading
 import logging
 
+from requests import session
+
 logger = logging.getLogger(__name__)
 
 @dataclass
@@ -30,6 +32,9 @@ class JourneySession:
 
     # AI booking service attributes
     missing_fields: list = field(default_factory=list)
+
+    # Track journey completion
+    journey_completed: bool = False
 
     def update_activity(self):
         """Update last activity timestamp"""
@@ -78,20 +83,115 @@ class SessionManager:
                 session.update_activity()
                 return session
             return None
+# COMMENTED FOR NOW - NOT IN USE
+    # def get_or_create_session(self, user_id: str, user_name: str, auth_token: str) -> JourneySession:
+    #     """Get existing session or create new one"""
+    #     with self._lock:
+    #         if user_id:
+    #             session = self._get_session(user_id)
+    #             if session:
+    #                 # Update auth token if provided
+    #                 if auth_token:
+    #                     session.auth_token = auth_token
+    #                 return session
 
+    #         # Create new session
+    #         return self._create_session(user_id, user_name, auth_token)
+
+# NEW CODE ADDED TO RESOLVE JWT TOKEN ISSUE
     def get_or_create_session(self, user_id: str, user_name: str, auth_token: str) -> JourneySession:
-        """Get existing session or create new one"""
         with self._lock:
-            if user_id:
-                session = self._get_session(user_id)
-                if session:
-                    # Update auth token if provided
-                    if auth_token:
-                        session.auth_token = auth_token
-                    return session
+            session = self._get_session(user_id)
 
-            # Create new session
+            if session:
+                # 🚨 If token changes, treat as NEW login/session
+                if auth_token and session.auth_token != auth_token:
+                    logger.warning(
+                        f"JWT changed for user {user_id}. Creating new session."
+                    )
+                    return self._create_session(user_id, user_name, auth_token)
+
+                return session
+
+            # No session exists → create new
             return self._create_session(user_id, user_name, auth_token)
+
+        
+
+
+    # JOURNEY RESET LOGIC (KEY FUNCTION FOR YOUR REQUIREMENT)
+    # ---------------------------------------------------------
+    # def reset_journey(self, session: JourneySession):
+    #     """Reset only the journey data while keeping the user session active"""
+    #     logger.info(f"Resetting journey for user {session.user_id}")
+
+    #     session.journey_step = "destination"
+    #     session.journey_data.clear()
+    #     session.journey_messages.clear()
+    #     session.missing_fields.clear()
+    #     session.existing_address_types.clear()
+    #     session.journey_completed = False
+
+    #     # Do NOT reset greeting — greeting should only show once per session
+    #     session.update_activity()  
+
+
+    def reset_journey(self, session: JourneySession):
+        """Reset only the journey data while keeping the user session active"""
+        logger.info(f"🔄 Resetting journey for user {session.user_id}")
+
+        # Log current journey state before reset
+        logger.info(f"Before reset: journey_step={session.journey_step}, "
+                    f"journey_data={session.journey_data}, "
+                    f"journey_messages={session.journey_messages}, "
+                    f"missing_fields={session.missing_fields}, "
+                    f"existing_address_types={session.existing_address_types}, "
+                    f"journey_completed={session.journey_completed}")
+
+        # Reset journey fields
+        session.journey_step = "destination"
+        session.journey_data.clear()
+        session.journey_messages.clear()
+        session.missing_fields.clear()
+        session.existing_address_types.clear()
+        session.journey_completed = False
+
+        # Do NOT reset greeting — greeting should only show once per session
+        session.update_activity()
+
+        # Log after reset
+        logger.info(f"After reset: journey_step={session.journey_step}, "
+                    f"journey_data={session.journey_data}, "
+                    f"journey_messages={session.journey_messages}, "
+                    f"missing_fields={session.missing_fields}, "
+                    f"existing_address_types={session.existing_address_types}, "
+                    f"journey_completed={session.journey_completed}")
+
+        logger.info(f"✅ Journey reset confirmed for user {session.user_id}")
+
+
+
+    # TRIGGER RESET WHEN USER WANTS A NEW JOURNEY
+    # ---------------------------------------------------------
+    def handle_new_journey_intent(self, session: JourneySession):
+        """
+        Call this when NLU detects:
+        - "I want to book a journey"
+        - "Book another one"
+        - "Start a new booking"
+        """
+        self.reset_journey(session)
+        return "Sure, let's start a new journey. Where would you like to go?"    
+
+     # RESET AFTER BOOKING COMPLETES
+    # ---------------------------------------------------------
+    def mark_journey_completed(self, session: JourneySession):
+        """Marks a journey as completed and resets state"""
+        logger.info(f"Marking journey completed for user {session.user_id}")
+
+        session.journey_completed = True
+        # Reset journey so next booking is fresh
+        self.reset_journey(session)  
 
     def initialize_session(self, session: JourneySession) -> str:
         """Initialize a new journey booking session with greeting"""

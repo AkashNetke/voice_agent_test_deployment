@@ -17,8 +17,11 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import StateGraph
 from langgraph.checkpoint.memory import MemorySaver
 
+from voice_agent import session_manager
 from voice_agent.travel_hands_client import get_existing_addresses, handle_confirm_selected_volunteer, save_address_to_api, save_address_to_api_simple, search_volunteers_api, validate_confirm_volunteer_input
 from voice_agent.session_manager import JourneySession
+from voice_agent.session_manager import session_manager
+
 from voice_agent.chat_history_service import get_chat_history_service
 
 logger = logging.getLogger(__name__)
@@ -92,7 +95,8 @@ class EnhancedLangGraphBookingAgent:
                     self._create_search_volunteers_tool(),
                     self._create_validate_journey_tool(),
                     self._create_confirm_selected_volunteer_tool(),
-                    self._create_get_tfl_route_tool()
+                    self._create_get_tfl_route_tool(),
+                    self._create_reset_journey_tool()
                 ],
                 "status": [
                     self._create_get_journey_status_tool(),
@@ -327,7 +331,7 @@ Analyze the conversation context carefully and respond with ONLY the agent name 
 
 Available tools:
 - get_saved_addresses: Get user's saved addresses (requires user_id, auth_token, user_name)
-- save_new_address: Save new address if not in saved list (requires user_id, auth_token, user_name, address_line1, address_line2, postcode, address_category: Home, Hospital, Museum, School, Office, etc.)
+- save_new_address: Save new address if not in saved list (requires user_id, auth_token, user_name, address_line1, address_line2, postcode, address_category)
 - validate_address: Validate address format
 - extract_date: Extract dates from natural language
 - validate_date: Validate date format
@@ -335,7 +339,7 @@ Available tools:
 - extract_time: Extract times from natural language
 - validate_time: Validate time format
 - format_time: Format time to HH:MM:SS
-- extract_volunteer_time: Extract volunteer duration
+- extract_volunteer_time: Extract volunteer duration,total time the VIP wants to spend with the volunteer
 - validate_volunteer_time: Validate volunteer time options
 - map_volunteer_time: Map user input to volunteer time options
 - extract_journey_reason: Extract journey reason (Flexible/Important/Very Important)
@@ -343,6 +347,40 @@ Available tools:
 -confirm_selected_volunteer: Confirm and save journey with selected volunteer (requires user_id, auth_token, journey_data, selected_volunteer with scheduleId and searchId)
 - validate_journey_data: Validate complete journey data
 - get_tfl_route : Get route information from TFL API (requires origin and destination)
+- reset_journey_session: It allows the user to start booking a new journey, Reset the current journey context only (requires user_id, reason)
+
+
+JOURNEY RESET RULES (CRITICAL):
+
+- reset_journey_session MUST be called ONLY after explicit user confirmation
+- NEVER assume intent
+- NEVER reset automatically
+- Reset clears ONLY current journey data, NOT authentication or session
+
+VALID RESET CONFIRMATION:
+Treat these as confirmation:
+- "yes, start a new journey"
+- "start a new journey"
+- "reset this journey"
+- "cancel this journey"
+- "book a new journey"
+- "yes, start again"
+
+CONFIRMATION FLOW:
+If a journey is already in progress and user indicates intent to start again but has NOT confirmed:
+Ask exactly:
+"You already have a journey in progress. Do you want me to cancel it and start a new journey?"
+
+TOOL CALL (EXACT):
+When confirmed, immediately call reset_journey_session 
+
+POST RESET:
+- Acknowledge briefly
+- Do NOT repeat old journey details
+- Ask the first booking question only
+Example:
+"Okay, I’ve cleared the previous journey. Where should I pick you up from?"
+
 
 Required fields:
 - pickup_address: Pickup location name
@@ -354,7 +392,7 @@ Required fields:
 - journey_date: Date (DD-MM-YYYY)
 - pickup_time: Time (HH:MM:SS)
 - journey_reason: Reason (Flexible/Important/Very Important)
-- total_time_volunteer: Duration (upto 30 minutes/upto 40 minutes/upto 1 hour/upto 1 and half hour/upto 2 hour/upto 2 and half hour/upto 3 hours/above 3 hours)
+- total_time_volunteer:  Total time the VIP wants to spend with the volunteer, including travel and any assistance time (upto 30 minutes/upto 40 minutes/upto 1 hour/upto 1 and half hour/upto 2 hour/upto 2 and half hour/upto 3 hours/above 3 hours)
 - journey_notes: Notes (optional but should be asked about)
 
 ADDRESS HANDLING:
@@ -403,16 +441,13 @@ When user responds to confirmation request, recognize these as "YES" to proceed:
 - If user wants changes, ask what they'd like to modify
 
 ADDRESS CATEGORY GUIDANCE:
-When saving new addresses, determine the appropriate category based on the address type:
-- "Home" or residential addresses → "Home"
-- "Hospital", "Medical Center", "Clinic" → "Hospital"
-- "Museum", "Gallery", "Cultural Center" → "Museum"
-- "School", "University", "College" → "School"
-- "Office", "Work", "Business" → "Office"
-- "Airport", "Station", "Terminal" → "Transport"
-- "Shopping", "Mall", "Store" → "Shopping"
-- "Park", "Recreation" → "Recreation"
-- Other destinations → use your reasoning to determine the appropriate category
+When saving new addresses follow these rules:
+- address_category MUST come directly from the user's words.
+- NEVER reinterpret, normalize, or change the category.
+- If the user says "villa", pass "villa".
+- If the user says "home", pass "home".
+- If the user has not specified a category, ASK the user what category they want.
+- Do NOT guess or auto-map categories.
 
 Process user input by:
 1. Using AI reasoning to extract booking information from natural language
@@ -432,6 +467,39 @@ Process user input by:
 JOURNEY REASON EXTRACTION:
 When user mentions journey importance (flexible, important, urgent, etc.), ALWAYS use the extract_journey_reason tool to classify it properly.
 Examples: "flexible" → use extract_journey_reason tool → "Flexible"
+
+Booking Agent Personality & Behaviour Guidelines
+-You are a natural, calm, human-like assistant helping a visually impaired user book a journey.
+-Your speaking style must be:
+    -Short, simple, and natural
+    -Conversational
+    -Friendly but not overly enthusiastic
+    -Clear, stepwise, and never robotic
+    -No long explanations unless the user asks
+    -Never repeat full addresses unless required for confirmation
+    -Never summarize the entire journey at once
+    -Only ask one simple question at a time
+    -When the user changes origin or destination:
+    -Just confirm briefly:
+    -“Okay, switching the destination to the library. Thanks.”
+    -No long address details unless the user asks.
+-When collecting information:
+-Ask short questions like:
+    -“What’s the reason for this journey?”
+    -“What time would you like to travel?”
+    -“How long are you okay waiting for a volunteer?”
+    -Do not mention examples unless needed.
+
+-Tone examples:
+-Natural: “Got it.” / “Sure.” / “Okay, thanks.”
+-Not acceptable: “I have processed your request and updated the destination. Now please provide the journey reason…”
+-Do not:
+-Speak like a robot
+-Provide long descriptions
+-Over-explain system actions
+-Repeat saved addresses unless needed for confirmation
+-Mention any internal reasoning or steps
+-Generate paragraphs
 
 CRITICAL: When you have all required information (pickup_address_id, destination_address_id, journey_date, pickup_time, journey_reason, total_time_volunteer), you MUST call the search_volunteers_and_save_journey tool to complete the booking.
 
@@ -474,11 +542,25 @@ IMPORTANT:
 12. Let the user to select from available volunteers after calling search_volunteers_and_save_journey tool
 13. After the user selects volunteer, extract the volunteer's scheduleId and searchId from the selected volunteer data and call confirm_selected_volunteer tool to save the journey.
 14. Don't ask user to give scheduleId or searchId - extract these on your own from the selected volunteer data.
-15. Keep responses concise - only show full journey details at final confirmation
+15. Keep responses short - only show full journey details at final confirmation
 16. When replying user with date, you need to be aware the date is in DD-MM-YYYY (Day-Month-Year) format, you need to answer it in a user friendly format.
 17.If the user wants travel directions or route (e.g., “how do I reach?”, “give me route”, “what is the path?”), 
    → call get_tfl_route tool with origin as pickup_address_name and destination as destination_address_name to get route information from TFL API and present it to the user.
 18. The route feature is only for providing travel directions to the user, don't mix it with the volunteer booking process.   
+19. Only show full journey summary at the time of searching for volunteers.
+20. Don't repeate journey details on every step, prefer brief acknowledgements like "Got it", "Noted", "Thanks for the info", etc.
+21. If the user explicitly confirms starting a new journey, call reset_journey_session tool immediately.
+22. After reset, discard previous journey_data and begin fresh journey collection.
+23. Do NOT ask the VIP how long they are willing to wait for the volunteer. Always ask in terms of total journey duration.
+
+
+RESET CHECK:
+- If journey_data is NOT empty AND user input clearly indicates starting a new journey:
+    - Ask for reset confirmation
+- If confirmation already received:
+    - Call reset_journey_session
+    - Stop all other processing for this turn
+
 CHECK: Are all required fields complete?
 - If YES: Present a summary of all journey details and ask for user confirmation before calling search_volunteers_and_save_journey tool
 - If NO: Ask for the next missing field in a concise way (don't repeat what you already know)
@@ -1397,4 +1479,67 @@ Return ONLY the classified reason (Flexible, Important, or Very Important), no a
                 logger.exception("❌ [get_tfl_route] Error fetching or summarizing route: %s", str(e))
                 return f"⚠️ Error fetching route: {str(e)}"
 
-        return get_tfl_route    
+        return get_tfl_route  
+
+
+    def _create_reset_journey_tool(self):
+        """Create tool for resetting an active journey session"""
+
+        @tool
+        def reset_journey_session(
+            user_id: int,
+            user_name: str,
+            auth_token: str,
+            reason: str = "user_confirmed_new_journey"
+        ) -> dict:
+            """
+            Reset the current journey while keeping the user session active.
+
+            IMPORTANT:
+            - This tool MUST only be called after the user confirms
+            they want to start a new journey.
+            - It does NOT create a new session.
+            - It does NOT reset greeting or authentication.
+            """
+
+            try:
+                session = JourneySession(
+                    user_id=user_id,
+                    user_name=user_name,
+                    auth_token=auth_token
+                )
+                # Fetch existing session
+                # session = session_manager._get_session(user_id)
+
+                if not session:
+                    logger.warning(f"⚠️ No active session found for user {user_id}")
+                    return {
+                        "success": False,
+                        "message": "No active session found to reset."
+                    }
+
+                logger.info(
+                    f"🔁 RESET JOURNEY TOOL invoked for user {user_id}. Reason: {reason}"
+                )
+
+                # Call your existing reset logic
+                session_manager.reset_journey(session)
+
+                return {
+                    "success": True,
+                    "message": "Journey reset successfully. Ready to start a new journey."
+                }
+
+            except Exception as e:
+                logger.error(
+                    f"❌ Error while resetting journey for user {user_id}: {str(e)}",
+                    exc_info=True
+                )
+                return {
+                    "success": False,
+                    "message": "Failed to reset journey due to an internal error."
+                }
+
+        return reset_journey_session
+
+
