@@ -469,7 +469,7 @@ IMPORTANT:
 7. For addresses: Use get_saved_addresses to get addresses with IDs and address lines, then use AI reasoning to match user input and extract both the correct address ID AND address line. CRITICAL: The API returns JSON format [{{"addressId":502,"addressType":"Home","addressLine1":"n",...}}] - extract the exact "addressId" value from the JSON object, do not make up IDs
 8. If ALL required fields are complete, verify all the journey details with the user and ask for confirmation before calling search_volunteers_and_save_journey tool
 9. Always ask about journey notes - if user hasn't provided any notes, ask if they want to add any comments or special instructions
-10. When user confirms (says "yes", "looks good", "thanks", etc.), immediately call search_volunteers_and_save_journey tool
+10. When user confirms (says "yes", "looks good", "thanks", etc.), immediately call search_volunteers_and_save_journey tool, this will send the journey request to the selected volunteer.
 11. Keep responses concise - only show full journey details at final confirmation
 12. When replying user with date, you need to be aware the date is in DD-MM-YYYY (Day-Month-Year) format, you need to answer it in a user friendly format.
 
