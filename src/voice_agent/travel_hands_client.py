@@ -294,63 +294,63 @@ def save_address_to_api(session, address_data, address_category="Pickup", existi
 def search_volunteers_api(session, journey_data):
     """Search for volunteers using Travel Hands API"""
     try:
-        # Map journey reason to full description
-        reason_mapping = {
-            "Flexible": "Flexible or leisure activity eg. a walk in the park - Not time sensitive and can easily be postponed",
-            "Important": "Important appointment or commitment - Some flexibility but preferably not postponed",
-            "Very Important": "Very important or urgent appointment - Time critical and cannot be postponed"
-        }
+    #     # Map journey reason to full description
+    #     reason_mapping = {
+    #         "Flexible": "Flexible or leisure activity eg. a walk in the park - Not time sensitive and can easily be postponed",
+    #         "Important": "Important appointment or commitment - Some flexibility but preferably not postponed",
+    #         "Very Important": "Very important or urgent appointment - Time critical and cannot be postponed"
+    #     }
 
-        journey_reason_full = reason_mapping.get(journey_data.get('journey_reason', 'Flexible'),
-                                                journey_data.get('journey_reason', 'Flexible'))
+    #     journey_reason_full = reason_mapping.get(journey_data.get('journey_reason', 'Flexible'),
+    #                                             journey_data.get('journey_reason', 'Flexible'))
 
-        # Validate pickup_time format before making API call
-        pickup_time = journey_data.get('pickup_time', '')
-        if pickup_time and not re.match(r'^\d{2}:\d{2}:\d{2}$', pickup_time):
-            logging.error(f"Invalid pickup_time format: '{pickup_time}'. Expected HH:MM:SS format.")
-            # Try to parse it one more time
-            parsed_time = parse_pickup_time(pickup_time)
-            if parsed_time:
-                journey_data['pickup_time'] = parsed_time
-                logging.info(f"Successfully re-parsed pickup_time: '{pickup_time}' -> '{parsed_time}'")
-            else:
-                # Set a default time if parsing fails
-                journey_data['pickup_time'] = "09:00:00"
-                logging.warning(f"Failed to parse pickup_time '{pickup_time}', using default '09:00:00'")
+    #     # Validate pickup_time format before making API call
+    #     pickup_time = journey_data.get('pickup_time', '')
+    #     if pickup_time and not re.match(r'^\d{2}:\d{2}:\d{2}$', pickup_time):
+    #         logging.error(f"Invalid pickup_time format: '{pickup_time}'. Expected HH:MM:SS format.")
+    #         # Try to parse it one more time
+    #         parsed_time = parse_pickup_time(pickup_time)
+    #         if parsed_time:
+    #             journey_data['pickup_time'] = parsed_time
+    #             logging.info(f"Successfully re-parsed pickup_time: '{pickup_time}' -> '{parsed_time}'")
+    #         else:
+    #             # Set a default time if parsing fails
+    #             journey_data['pickup_time'] = "09:00:00"
+    #             logging.warning(f"Failed to parse pickup_time '{pickup_time}', using default '09:00:00'")
 
-        # Validate required address IDs before making API call
-        pickup_address_id = journey_data.get('pickup_address_id')
-        dest_address_id = journey_data.get('dest_address_id')
+    #     # Validate required address IDs before making API call
+    #     pickup_address_id = journey_data.get('pickup_address_id')
+    #     dest_address_id = journey_data.get('dest_address_id')
 
-        if not pickup_address_id:
-            logging.error("Missing pickup_address_id - cannot search for volunteers")
-            return {
-                "success": False,
-                "message": "Pickup address not found. Please provide a valid pickup address.",
-                "volunteers": []
-            }
+    #     if not pickup_address_id:
+    #         logging.error("Missing pickup_address_id - cannot search for volunteers")
+    #         return {
+    #             "success": False,
+    #             "message": "Pickup address not found. Please provide a valid pickup address.",
+    #             "volunteers": []
+    #         }
 
-        if not dest_address_id:
-            logging.error("Missing dest_address_id - cannot search for volunteers")
-            return {
-                "success": False,
-                "message": "Destination address not found. Please provide a valid destination address.",
-                "volunteers": []
-            }
+    #     if not dest_address_id:
+    #         logging.error("Missing dest_address_id - cannot search for volunteers")
+    #         return {
+    #             "success": False,
+    #             "message": "Destination address not found. Please provide a valid destination address.",
+    #             "volunteers": []
+    #         }
 
         # Construct the payload
         payload = {
-            "pickupAddressId": pickup_address_id,
-            "destinationAddressId": dest_address_id,
+            "pickupAddressId": journey_data.get('pickup_address_id',''),
+            "destinationAddressId": journey_data.get('dest_address_id',''),
             "pickupAdressName": journey_data.get('pickup_address_type', ''),
             "destinationAdressName": journey_data.get('dest_address_type', ''),
-            "journeyReason": journey_reason_full,
+            "journeyReason": journey_data.get('journey_reason', ''),
             "jounreyDate": journey_data.get('journey_date', ''),
             "pickupTime": journey_data.get('pickup_time', ''),
             "journeyEndTime": "",
             "journeyNote": journey_data.get('journey_notes', 'None'),
             "totalTimeForVolunteer": journey_data.get('total_time_volunteer', '')
-        }
+            }
 
         # Determine if journey is flexible
         is_flexible = "true" if journey_data.get('journey_reason') == "Flexible" else "false"

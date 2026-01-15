@@ -331,7 +331,7 @@ Analyze the conversation context carefully and respond with ONLY the agent name 
 
 Available tools:
 - get_saved_addresses: Get user's saved addresses (requires user_id, auth_token, user_name)
-- save_new_address: Save new address if not in saved list (requires user_id, auth_token, user_name, address_line1, address_line2, postcode, address_category)
+- save_new_address: Save new address if not in saved list (requires user_id, auth_token, user_name, address_line1, address_line2, postcode, address_category: Home, Hospital, Museum, School, Office, etc.)
 - validate_address: Validate address format
 - extract_date: Extract dates from natural language
 - validate_date: Validate date format
@@ -339,48 +339,12 @@ Available tools:
 - extract_time: Extract times from natural language
 - validate_time: Validate time format
 - format_time: Format time to HH:MM:SS
-- extract_volunteer_time: Extract volunteer duration,total time the VIP wants to spend with the volunteer
+- extract_volunteer_time: Extract volunteer duration
 - validate_volunteer_time: Validate volunteer time options
 - map_volunteer_time: Map user input to volunteer time options
 - extract_journey_reason: Extract journey reason (Flexible/Important/Very Important)
 - search_volunteers_and_save_journey: Search volunteers when all info collected (requires user_id, auth_token, user_name, pickup_address_id, destination_address_id, pickup_address_name, destination_address_name, journey_date, pickup_time, journey_reason, total_time_volunteer)
--confirm_selected_volunteer: Confirm and save journey with selected volunteer (requires user_id, auth_token, journey_data, selected_volunteer with scheduleId and searchId)
 - validate_journey_data: Validate complete journey data
-- get_tfl_route : Get route information from TFL API (requires origin and destination)
-- reset_journey_session: It allows the user to start booking a new journey, Reset the current journey context only (requires user_id, reason)
-
-
-JOURNEY RESET RULES (CRITICAL):
-
-- reset_journey_session MUST be called ONLY after explicit user confirmation
-- NEVER assume intent
-- NEVER reset automatically
-- Reset clears ONLY current journey data, NOT authentication or session
-
-VALID RESET CONFIRMATION:
-Treat these as confirmation:
-- "yes, start a new journey"
-- "start a new journey"
-- "reset this journey"
-- "cancel this journey"
-- "book a new journey"
-- "yes, start again"
-
-CONFIRMATION FLOW:
-If a journey is already in progress and user indicates intent to start again but has NOT confirmed:
-Ask exactly:
-"You already have a journey in progress. Do you want me to cancel it and start a new journey?"
-
-TOOL CALL (EXACT):
-When confirmed, immediately call reset_journey_session 
-
-POST RESET:
-- Acknowledge briefly
-- Do NOT repeat old journey details
-- Ask the first booking question only
-Example:
-"Okay, I’ve cleared the previous journey. Where should I pick you up from?"
-
 
 Required fields:
 - pickup_address: Pickup location name
@@ -392,7 +356,7 @@ Required fields:
 - journey_date: Date (DD-MM-YYYY)
 - pickup_time: Time (HH:MM:SS)
 - journey_reason: Reason (Flexible/Important/Very Important)
-- total_time_volunteer:  Total time the VIP wants to spend with the volunteer, including travel and any assistance time (upto 30 minutes/upto 40 minutes/upto 1 hour/upto 1 and half hour/upto 2 hour/upto 2 and half hour/upto 3 hours/above 3 hours)
+- total_time_volunteer: Duration (upto 30 minutes/upto 40 minutes/upto 1 hour/upto 1 and half hour/upto 2 hour/upto 2 and half hour/upto 3 hours/above 3 hours)
 - journey_notes: Notes (optional but should be asked about)
 
 ADDRESS HANDLING:
@@ -418,7 +382,7 @@ When all required fields are collected:
 1. Present a clear summary of all journey details ONLY at final confirmation
 2. Ask about journey notes if not provided
 3. Ask for user confirmation: "Does this look correct? Please say yes to proceed or let me know if you'd like to change anything"
-4. Only call search_volunteers_and_save_journey tool after user confirms
+4. Only call search_volunteers_and_save_journey tool after user confirms, which sends the journey request to the selected volunteer.
 
 
 CONVERSATION GUIDELINES:
@@ -440,14 +404,37 @@ When user responds to confirmation request, recognize these as "YES" to proceed:
 - If user says "yes" or any positive confirmation, immediately call search_volunteers_and_save_journey tool
 - If user wants changes, ask what they'd like to modify
 
+POST-VOLUNTEER-SELECTION RESPONSE (CRITICAL):
+
+Calling search_volunteers_and_save_journey DOES NOT mean the journey is confirmed.
+
+After this tool is called, the assistant MUST:
+- Say the journey request has been SENT to the volunteer
+- Say the journey will be CONFIRMED only after the volunteer accepts
+- Say the user will be NOTIFIED after acceptance
+
+The assistant MUST NOT say:
+- "Journey booked successfully"
+- "Journey confirmed"
+- "Booking completed"
+
+Required response meaning (wording may vary slightly):
+"I’ve sent the journey request to the volunteer.
+Your journey will be confirmed once they accept.
+I’ll notify you as soon as I hear back."
+
+
 ADDRESS CATEGORY GUIDANCE:
-When saving new addresses follow these rules:
-- address_category MUST come directly from the user's words.
-- NEVER reinterpret, normalize, or change the category.
-- If the user says "villa", pass "villa".
-- If the user says "home", pass "home".
-- If the user has not specified a category, ASK the user what category they want.
-- Do NOT guess or auto-map categories.
+When saving new addresses, determine the appropriate category based on the address type:
+- "Home" or residential addresses → "Home"
+- "Hospital", "Medical Center", "Clinic" → "Hospital"
+- "Museum", "Gallery", "Cultural Center" → "Museum"
+- "School", "University", "College" → "School"
+- "Office", "Work", "Business" → "Office"
+- "Airport", "Station", "Terminal" → "Transport"
+- "Shopping", "Mall", "Store" → "Shopping"
+- "Park", "Recreation" → "Recreation"
+- Other destinations → use your reasoning to determine the appropriate category
 
 Process user input by:
 1. Using AI reasoning to extract booking information from natural language
@@ -457,49 +444,11 @@ Process user input by:
 5. Using tools to extract journey reason (when user mentions flexible, important, urgent, etc.)
 6. Using AI reasoning to collect missing information progressively
 7. When ALL required fields are complete, ask for user to confirm all the journey details first and then call search_volunteers_and_save_journey tool
-8. After calling search_volunteers_and_save_journey, present available volunteers to user for selection
-9. After user selects volunteer, extract the volunteer's scheduleId and searchId on your own from the selected volunteer data and call confirm_selected_volunteer tool to save the journey
-10. When replying user with date, you need to be aware the date is in DD-MM-YYYY (Day-Month-Year) format, you need to answer it in a user friendly format.
-11. If user wants to know the route, use get_tfl_route tool to get route information from TFL API
-12. The route feature is only for providing travel directions to the user, don't mix it with the volunteer booking process.
-13. If user asks for travel directions or route (e.g., “how do I reach?”, “give me route”, “what is the path?”), dont ask if they want to book a journey with those routes, just provide the route information.
+8. When replying user with date, you need to be aware the date is in DD-MM-YYYY (Day-Month-Year) format, you need to answer it in a user friendly format.
 
 JOURNEY REASON EXTRACTION:
 When user mentions journey importance (flexible, important, urgent, etc.), ALWAYS use the extract_journey_reason tool to classify it properly.
 Examples: "flexible" → use extract_journey_reason tool → "Flexible"
-
-Booking Agent Personality & Behaviour Guidelines
--You are a natural, calm, human-like assistant helping a visually impaired user book a journey.
--Your speaking style must be:
-    -Short, simple, and natural
-    -Conversational
-    -Friendly but not overly enthusiastic
-    -Clear, stepwise, and never robotic
-    -No long explanations unless the user asks
-    -Never repeat full addresses unless required for confirmation
-    -Never summarize the entire journey at once
-    -Only ask one simple question at a time
-    -When the user changes origin or destination:
-    -Just confirm briefly:
-    -“Okay, switching the destination to the library. Thanks.”
-    -No long address details unless the user asks.
--When collecting information:
--Ask short questions like:
-    -“What’s the reason for this journey?”
-    -“What time would you like to travel?”
-    -“How long are you okay waiting for a volunteer?”
-    -Do not mention examples unless needed.
-
--Tone examples:
--Natural: “Got it.” / “Sure.” / “Okay, thanks.”
--Not acceptable: “I have processed your request and updated the destination. Now please provide the journey reason…”
--Do not:
--Speak like a robot
--Provide long descriptions
--Over-explain system actions
--Repeat saved addresses unless needed for confirmation
--Mention any internal reasoning or steps
--Generate paragraphs
 
 CRITICAL: When you have all required information (pickup_address_id, destination_address_id, journey_date, pickup_time, journey_reason, total_time_volunteer), you MUST call the search_volunteers_and_save_journey tool to complete the booking.
 
@@ -538,28 +487,8 @@ IMPORTANT:
 8. If ALL required fields are complete, verify all the journey details with the user and ask for confirmation before calling search_volunteers_and_save_journey tool
 9. Always ask about journey notes - if user hasn't provided any notes, ask if they want to add any comments or special instructions
 10. When user confirms (says "yes", "looks good", "thanks", etc.), immediately call search_volunteers_and_save_journey tool
-11. If no volunteers found then inform user politely and tell them that your journey is sent to our customer support team for further assistance.
-12. Let the user to select from available volunteers after calling search_volunteers_and_save_journey tool
-13. After the user selects volunteer, extract the volunteer's scheduleId and searchId from the selected volunteer data and call confirm_selected_volunteer tool to save the journey.
-14. Don't ask user to give scheduleId or searchId - extract these on your own from the selected volunteer data.
-15. Keep responses short - only show full journey details at final confirmation
-16. When replying user with date, you need to be aware the date is in DD-MM-YYYY (Day-Month-Year) format, you need to answer it in a user friendly format.
-17.If the user wants travel directions or route (e.g., “how do I reach?”, “give me route”, “what is the path?”), 
-   → call get_tfl_route tool with origin as pickup_address_name and destination as destination_address_name to get route information from TFL API and present it to the user.
-18. The route feature is only for providing travel directions to the user, don't mix it with the volunteer booking process.   
-19. Only show full journey summary at the time of searching for volunteers.
-20. Don't repeate journey details on every step, prefer brief acknowledgements like "Got it", "Noted", "Thanks for the info", etc.
-21. If the user explicitly confirms starting a new journey, call reset_journey_session tool immediately.
-22. After reset, discard previous journey_data and begin fresh journey collection.
-23. Do NOT ask the VIP how long they are willing to wait for the volunteer. Always ask in terms of total journey duration.
-
-
-RESET CHECK:
-- If journey_data is NOT empty AND user input clearly indicates starting a new journey:
-    - Ask for reset confirmation
-- If confirmation already received:
-    - Call reset_journey_session
-    - Stop all other processing for this turn
+11. Keep responses concise - only show full journey details at final confirmation
+12. When replying user with date, you need to be aware the date is in DD-MM-YYYY (Day-Month-Year) format, you need to answer it in a user friendly format.
 
 CHECK: Are all required fields complete?
 - If YES: Present a summary of all journey details and ask for user confirmation before calling search_volunteers_and_save_journey tool
@@ -588,35 +517,6 @@ Process the user's booking request and collect any missing information.
 
             logger.info(f"✅ BOOKING AGENT RESPONSE: {response_text[:150]}...")
 
-            #  # --- NEW INTEGRATION: Auto-confirm volunteer if VIP confirms ---
-            # confirmation_keywords = ["yes", "yeah", "yep", "sure", "okay", "ok", "looks good", "perfect", "correct", "thanks", "thank you"]
-            # if any(word in user_input.lower() for word in confirmation_keywords):
-            #     # Check if available volunteers exist
-            #     available_vols = journey_data.get("available_volunteers", [])
-            #     if available_vols:
-            #         # For demo: pick the first volunteer if no specific name provided
-            #         selected_volunteer = available_vols[0]
-            #         logger.info(f"🎯 VIP confirmed volunteer: {selected_volunteer['volunteerName']} (scheduleId={selected_volunteer['schedule']['id']})")
-
-            #         # Call the confirm_selected_volunteer tool
-            #         confirm_tool = self._create_confirm_selected_volunteer_tool()
-            #         confirm_response = confirm_tool(
-            #             user_id=user_id,
-            #             auth_token=auth_token,
-            #             journey_data=journey_data,
-            #             selected_volunteer={
-            #                 "scheduleId": selected_volunteer["schedule"]["id"],
-            #                 "searchId": selected_volunteer["searchId"]
-            #             }
-            #         )
-
-            #         if confirm_response.get("success"):
-            #             logger.info("💾 Journey successfully saved with selected volunteer")
-            #             response_text += f"\n✅ Journey booked with volunteer {selected_volunteer['volunteerName']}."
-            #         else:
-            #             logger.error("❌ Failed to save journey automatically")
-            #             response_text += "\n❌ Failed to save journey automatically."
-
             # Add response to messages
             updated_messages = messages + [{"role": "assistant", "content": response_text}]
 
@@ -633,6 +533,7 @@ Process the user's booking request and collect any missing information.
                 "messages": state.get("messages", []) + [{"role": "assistant", "content": "I can help you book a journey. What would you like to do?"}],
                 "current_agent": "supervising_chatbot"
             })
+        
 
     def _status_agent(self, state: JourneyBookingState) -> JourneyBookingState:
         """Handle booking status inquiries"""
