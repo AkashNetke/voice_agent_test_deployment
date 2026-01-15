@@ -404,24 +404,7 @@ When user responds to confirmation request, recognize these as "YES" to proceed:
 - If user says "yes" or any positive confirmation, immediately call search_volunteers_and_save_journey tool
 - If user wants changes, ask what they'd like to modify
 
-POST-VOLUNTEER-SELECTION RESPONSE (CRITICAL):
 
-Calling search_volunteers_and_save_journey DOES NOT mean the journey is confirmed.
-
-After this tool is called, the assistant MUST:
-- Say the journey request has been SENT to the volunteer
-- Say the journey will be CONFIRMED only after the volunteer accepts
-- Say the user will be NOTIFIED after acceptance
-
-The assistant MUST NOT say:
-- "Journey booked successfully"
-- "Journey confirmed"
-- "Booking completed"
-
-Required response meaning (wording may vary slightly):
-"I’ve sent the journey request to the volunteer.
-Your journey will be confirmed once they accept.
-I’ll notify you as soon as I hear back."
 
 
 ADDRESS CATEGORY GUIDANCE:
