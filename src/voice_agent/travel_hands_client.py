@@ -427,7 +427,7 @@ def search_volunteers_api(session, journey_data):
         }
 
 def handle_confirm_selected_volunteer(user_id, auth_token, journey_data, selected_volunteer):
-    """Handles real backend API call for saving journey"""
+    """Handles real backend API call to send journey request to Travel Hands with selected volunteer"""
 
     payload = {
         "scheduleId": selected_volunteer["scheduleId"],
@@ -460,7 +460,7 @@ def handle_confirm_selected_volunteer(user_id, auth_token, journey_data, selecte
 
         return {"success": True, "response": result}
 
-    except requests.HTTPStatusError as e:
+    except requests.exceptions.HTTPError as e:
         logging.error(f"❌ Backend rejected request: {e.response.status_code} | {e.response.text}")
         return {"success": False, "message": f"Backend error: {e.response.text}"}
 
@@ -488,20 +488,22 @@ def validate_confirm_volunteer_input( journey_data, selected_volunteer):
     return {"valid": True}
 
 
-def get_existing_addresses(session):
+def get_existing_addresses(session, auth_token,user_id):
     """Fetch existing saved addresses for the user from Travel Hands API"""
     try:
         # API endpoint to get existing addresses - use dynamic user ID
-        get_addresses_endpoint = f"{travel_hands_api_base_url}/api/vip/addresses/{session.user_id}"
-
+        # get_addresses_endpoint = f"{travel_hands_api_base_url}/api/vip/addresses/{session.user_id}"
+        get_addresses_endpoint = f"{travel_hands_api_base_url}/api/vip/addresses/{user_id}"
+       
+       
         # Use the same authorization token
-        auth_token = get_auth_token(session)
-        if not auth_token:
-            return {
-                "success": False,
-                "error": "No valid authentication token available",
-                "addresses": []
-            }
+        # auth_token = get_auth_token(session)
+        # if not auth_token:
+        #     return {
+        #         "success": False,
+        #         "error": "No valid authentication token available",
+        #         "addresses": []
+        #     }
 
         logging.info(f"🔑 Auth token for get_existing_addresses API call: {auth_token[:20]}...")
         logging.info(f"🌐 API endpoint: {get_addresses_endpoint}")
