@@ -403,11 +403,20 @@ def search_volunteers_api(session, journey_data):
                 "response": response.json() if response.text else {},
                 "volunteers": response.json() if response.text else []
             }
+        # Handle email authentication error
+        elif response.status_code in [500]:
+            logging.warning("No volunteers found - sending journey to customer support")
+            return {
+                "success": False,
+                "message": "Your journey request has been sent to our customer support team as there are no available volunteers right now.",
+                "volunteers": []
+            }
+         # Handle other errors
         else:
             return {
                 "success": False,
                 "message": "Problem searching for volunteers. Please try again!",
-                "error": response.text
+                "error": response.text,
             }
 
     except requests.exceptions.Timeout:

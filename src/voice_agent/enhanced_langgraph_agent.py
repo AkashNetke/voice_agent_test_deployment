@@ -531,7 +531,7 @@ Be helpful, use tools, ask for missing info one at a time."""
 
             context = f"""
 User ID: {user_id}
-Auth Token: {auth_token[:20]}... (use full token: {auth_token})
+Auth Token: {auth_token})
 
 Current journey data: {journey_data}
 Missing fields: {state.get('missing_fields', [])}
