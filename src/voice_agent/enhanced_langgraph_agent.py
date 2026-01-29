@@ -18,7 +18,7 @@ from langgraph.graph import StateGraph
 from langgraph.checkpoint.memory import MemorySaver
 
 from voice_agent import session_manager
-from voice_agent.travel_hands_client import get_existing_addresses, handle_confirm_selected_volunteer, save_address_to_api, save_address_to_api_simple, search_volunteers_api, validate_confirm_volunteer_input
+from voice_agent.travel_hands_client import get_existing_addresses, handle_send_journey_request_to_volunteer, save_address_to_api, save_address_to_api_simple, search_volunteers_api, validate_confirm_volunteer_input
 from voice_agent.session_manager import JourneySession
 from voice_agent.session_manager import session_manager
 
@@ -94,7 +94,7 @@ class EnhancedLangGraphBookingAgent:
                     self._create_extract_journey_reason_tool(),
                     self._create_search_volunteers_tool(),
                     self._create_validate_journey_tool(),
-                    self._create_confirm_selected_volunteer_tool(),
+                    self._create_send_journey_request_to_volunteer_tool(),
                     self._create_get_tfl_route_tool(),
                     self._create_reset_journey_tool()
                 ],
@@ -324,20 +324,20 @@ Analyze the conversation context carefully and respond with ONLY the agent name 
             auth_token = user_context.get("auth_token", "")
 
             # 🔐 HARD GUARD: Volunteer selection handling
-            journey_data = state.get("journey_data", {})
-            available_volunteers = journey_data.get("available_volunteers", [])
+            # journey_data = state.get("journey_data", {})
+            # available_volunteers = journey_data.get("available_volunteers", [])
 
-            if available_volunteers:
-                normalized_input = user_input.lower().strip()
+            # if available_volunteers:
+            #     normalized_input = user_input.lower().strip()
 
-                for volunteer in available_volunteers:
-                    if volunteer["volunteerName"].lower() in normalized_input:
-                        logger.info("✅ Volunteer selected explicitly by user")
+            #     for volunteer in available_volunteers:
+            #         if volunteer["volunteerName"].lower() in normalized_input:
+            #             logger.info("✅ Volunteer selected explicitly by user")
 
-                        return self._confirm_selected_volunteer_directly(
-                            state=state,
-                            selected_volunteer=volunteer
-                        )
+            #             return self._send_journey_request_to_volunteer_directly(
+            #                 state=state,
+            #                 selected_volunteer=volunteer
+            #             )
 
             # Create ReAct agent with all booking tools
             booking_tools = self.tools["booking"]
@@ -360,7 +360,7 @@ Available tools:
 - map_volunteer_time: Map user input to volunteer time options
 - extract_journey_reason: Extract journey reason (Flexible/Important/Very Important)
 - search_volunteers_and_save_journey_details: Search volunteers when all info collected (requires user_id, auth_token, user_name, pickup_address_id, destination_address_id, pickup_address_name, destination_address_name, journey_date, pickup_time, journey_reason, total_time_volunteer)
-- confirm_selected_volunteer: Confirm and save journey with selected volunteer (requires user_id, auth_token, journey_data, selected_volunteer with scheduleId and searchId)
+- send_journey_request_to_volunteer: Confirm and send journey request with selected volunteer (requires user_id, auth_token, journey_data, selected_volunteer with scheduleId and searchId)
 - validate_journey_data: Validate complete journey data
 - get_tfl_route : Get route information from TFL API (requires origin and destination)
 - reset_journey_session: It allows the user to start booking a new journey, Reset the current journey context only (requires user_id, reason)
@@ -469,8 +469,25 @@ CRITICAL VOLUNTEER CONFIRMATION RULE:
 - When available volunteers have already been presented
 - AND the user clearly selects one by name
 - You MUST NOT generate conversational responses
-- You MUST call confirm_selected_volunteer immediately
+- You MUST call send_journey_request_to_volunteer immediately
 - NEVER say "there was an issue" unless the tool explicitly fails
+
+CRITICAL POST-TOOL RESPONSE RULE:
+
+When the tool send_journey_request_to_volunteer is called
+AND it returns success=true:
+
+- This means ONLY that a REQUEST has been sent.
+- The volunteer has NOT accepted yet.
+
+You MUST:
+- Say: "Your journey request has been sent to <VOLUNTEER_NAME>."
+- Optionally add: "We’ll notify you once the volunteer responds."
+
+You MUST NOT:
+- Say "confirmed", "booked", "scheduled", or "completed"
+- Imply acceptance or finalization
+- Rephrase this meaning in any way
 
 CONVERSATION GUIDELINES:
 - Keep responses concise and focused on what the user needs to know
@@ -503,7 +520,7 @@ Process user input by:
 6. Using AI reasoning to collect missing information progressively
 7. When ALL required fields are complete, ask for user to confirm all the journey details first and then call search_volunteers_and_save_journey_details tool
 8. After calling search_volunteers_and_save_journey_details, present available volunteers to user for selection
-9. After user selects volunteer, extract the volunteer's scheduleId and searchId on your own from the selected volunteer data and call confirm_selected_volunteer tool to send the journey request.
+9. After user selects volunteer, extract the volunteer's scheduleId and searchId on your own from the selected volunteer data and call send_journey_request_to_volunteer tool.
 10. When replying user with date, you need to be aware the date is in DD-MM-YYYY (Day-Month-Year) format, you need to answer it in a user friendly format.
 11. If user wants to know the route, use get_tfl_route tool to get route information from TFL API
 12. The route feature is only for providing travel directions to the user, don't mix it with the volunteer booking process.
@@ -553,7 +570,7 @@ IMPORTANT:
 10. When user confirms (says "yes", "looks good", "thanks", etc.), immediately call search_volunteers_and_save_journey_details tool.
 11. If no volunteers found then inform user politely and tell them that your journey is sent to our customer support team for further assistance.
 12. Let the user to select from available volunteers after calling search_volunteers_and_save_journey_details tool
-13. After the user selects volunteer, extract the volunteer's scheduleId and searchId from the selected volunteer data and call confirm_selected_volunteer tool.
+13. After the user selects volunteer, extract the volunteer's scheduleId and searchId from the selected volunteer data and call send_journey_request_to_volunteer tool.
 14. Don't ask user to give scheduleId or searchId - extract these on your own from the selected volunteer data.
 15. Keep responses short - only show full journey details at final confirmation
 16. When replying user with date, you need to be aware the date is in DD-MM-YYYY (Day-Month-Year) format, you need to answer it in a user friendly format.
@@ -1247,7 +1264,7 @@ Return ONLY the classified reason (Flexible, Important, or Very Important), no a
                 }
 
                 # Call the volunteer search API
-                result = search_volunteers_api(session, journey_data)
+                result = search_volunteers_api(session,auth_token,user_id, journey_data)
 
                 if result.get("success", False):
                     journey_data["available_volunteers"] = result.get("volunteers", [])
@@ -1277,20 +1294,28 @@ Return ONLY the classified reason (Flexible, Important, or Very Important), no a
 
         return search_volunteers_and_save_journey_details
 
-    def _create_confirm_selected_volunteer_tool(self):
-        """Create tool for confirming selected volunteer and saving journey"""
+    def _create_send_journey_request_to_volunteer_tool(self):
+        """Create tool for confirming selected volunteer and sending journey request"""
 
         @tool
-        def confirm_selected_volunteer(
+        def send_journey_request_to_volunteer(
             user_id: int,
             auth_token: str,
+            user_name:str,
             journey_data: dict,
             selected_volunteer: dict
         ) -> dict:
             """
-            Confirm the selected volunteer and send the journey request.
+            Sends a journey request to the selected volunteer. This does NOT mean the volunteer has accepted.
             """
             try:
+
+                session = JourneySession(
+                    user_id=user_id,
+                    user_name=user_name,
+                    auth_token=auth_token
+                )
+                  
                 # Validation moved to a small helper (cleaner logic)
                 validation = validate_confirm_volunteer_input(journey_data, selected_volunteer)
 
@@ -1298,13 +1323,13 @@ Return ONLY the classified reason (Flexible, Important, or Very Important), no a
                     return {"success": False, "message": validation["error"]}
 
                 # 🚀 Now call the real handler method
-                return handle_confirm_selected_volunteer(user_id, auth_token, journey_data, selected_volunteer)
+                return handle_send_journey_request_to_volunteer(session, journey_data, selected_volunteer)
 
             except Exception as e:
-                logger.error(f"❌ Error in confirm_selected_volunteer tool: {str(e)}", exc_info=True)
+                logger.error(f"❌ Error in send_journey_request_to_volunteer tool: {str(e)}", exc_info=True)
                 return {"success": False, "message": f"Internal error: {str(e)}"}
 
-        return confirm_selected_volunteer
+        return send_journey_request_to_volunteer
 
     def _create_validate_journey_tool(self):
         """Create tool for validating journey data"""
@@ -1528,31 +1553,33 @@ Return ONLY the classified reason (Flexible, Important, or Very Important), no a
         return reset_journey_session
 
 
-    def _confirm_selected_volunteer_directly(self, state, selected_volunteer):
-        user_context = state["user_context"]
+    # def _send_journey_request_to_volunteer_directly(self, state, selected_volunteer):
+    #     user_context = state["user_context"]
 
-        tool_input = {
-            "user_id": user_context["user_id"],
-            "auth_token": user_context["auth_token"],
-            "journey_data": state["journey_data"],
-            "selected_volunteer": {
-                "scheduleId": selected_volunteer["schedule"]["id"],
-                "searchId": selected_volunteer["searchId"]
-            }
-        }
+    #     tool_input = {
+    #         "user_id": user_context["user_id"],
+    #         "auth_token": user_context["auth_token"],
+    #         "journey_data": state["journey_data"],
+    #         "selected_volunteer": {
+    #             "scheduleId": selected_volunteer["schedule"]["id"],
+    #             "searchId": selected_volunteer["searchId"]
+    #         }
+    #     }
 
-        result = self.tools["booking"]["confirm_selected_volunteer"](tool_input)
+    #     result = self.tools["booking"]["send_journey_request_to_volunteer"](
+    #         **tool_input
+    #     )
 
-        success_message = (
-            f"Your journey has been sent to {selected_volunteer['volunteerName']}. "
-            "Once they accept, I’ll let you know.Have a safe journey."
-        )
+    #     success_message = (
+    #         f"Your journey has been sent to {selected_volunteer['volunteerName']}. "
+    #         "Once they accept, I’ll let you know.Have a safe journey."
+    #     )
 
-        return self._update_state(state, {
-            "messages": state["messages"] + [{
-                "role": "assistant",
-                "content": success_message
-            }],
-            "journey_data": {},  # clear journey after confirmation
-            "current_agent": "supervising_chatbot"
-        })
+    #     return self._update_state(state, {
+    #         "messages": state["messages"] + [{
+    #             "role": "assistant",
+    #             "content": success_message
+    #         }],
+    #         "journey_data": {},  # clear journey after confirmation
+    #         "current_agent": "supervising_chatbot"
+    #     })

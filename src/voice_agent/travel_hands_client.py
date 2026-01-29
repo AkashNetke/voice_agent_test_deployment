@@ -291,7 +291,7 @@ def save_address_to_api(session, address_data, address_category="Pickup", existi
             "message": f"Unexpected error while saving {address_category.lower()} address: {str(e)}"
         }
 
-def search_volunteers_api(session, journey_data):
+def search_volunteers_api(session,auth_token, user_id, journey_data):
     """Search for volunteers using Travel Hands API"""
     try:
     #     # Map journey reason to full description
@@ -356,7 +356,7 @@ def search_volunteers_api(session, journey_data):
         is_flexible = "true" if journey_data.get('journey_reason') == "Flexible" else "false"
 
         # Construct the API endpoint - use dynamic user ID
-        volunteer_search_endpoint = f"{travel_hands_api_base_url}/api/vip/volunteerSearch/{session.user_id}?isFlexible={is_flexible}"
+        volunteer_search_endpoint = f"{travel_hands_api_base_url}/api/vip/volunteerSearch/{user_id}?isFlexible={is_flexible}"
 
         # Log the API request
         logging.info("=" * 80)
@@ -365,17 +365,9 @@ def search_volunteers_api(session, journey_data):
         logging.info(f"Endpoint: {volunteer_search_endpoint}")
         logging.info(f"Payload: {json.dumps(payload, indent=2)}")
 
-        # Use the same authorization token
-        auth_token = get_auth_token(session)
-        if not auth_token:
-            return {
-                "success": False,
-                "error": "No valid authentication token available",
-                "volunteers": []
-            }
-
+     
         logging.info(f"🔑 API CALL TOKEN: {auth_token}")
-        logging.info(f"🔑 Auth token for search_volunteers_api API call: {auth_token[:20]}...")
+        logging.info(f"🔑 Auth token for search_volunteers_api API call: {auth_token}...")
 
         headers = {
             "Authorization": f"Bearer {auth_token}",
@@ -435,7 +427,7 @@ def search_volunteers_api(session, journey_data):
             "message": f"Unexpected error while searching for volunteers: {str(e)}"
         }
 
-def handle_confirm_selected_volunteer(user_id, auth_token, journey_data, selected_volunteer):
+def handle_send_journey_request_to_volunteer(session,journey_data, selected_volunteer):
     """Handles real backend API call to send journey request to Travel Hands with selected volunteer"""
 
     payload = {
@@ -451,7 +443,16 @@ def handle_confirm_selected_volunteer(user_id, auth_token, journey_data, selecte
         "totalTimeForVolunteer": journey_data.get("total_time_volunteer", "")
     }
 
-    api_endpoint = f"{travel_hands_api_base_url}/api/vip/requestJourney/{user_id}"
+    api_endpoint = f"{travel_hands_api_base_url}/api/vip/requestJourney/{session.user_id}"
+    
+    auth_token = session.auth_token
+    if not auth_token:
+        return {
+            "success": False,
+            "error": "No valid authentication token available",
+            "volunteers": []
+        }
+    
     headers = {"Authorization": f"Bearer {auth_token}", "Content-Type": "application/json"}
 
     logging.info("\n" + "="*90)
