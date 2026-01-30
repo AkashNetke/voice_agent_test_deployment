@@ -2,6 +2,7 @@
 Enhanced LangGraph Multi-Agent Journey Booking System
 """
 
+from difflib import get_close_matches
 import os
 import re
 import logging
@@ -339,6 +340,60 @@ Analyze the conversation context carefully and respond with ONLY the agent name 
             #                 selected_volunteer=volunteer
             #             )
 
+            journey_data = state.get("journey_data", {})
+            available_volunteers = journey_data.get("available_volunteers", [])
+
+            # FUZZY VOLUNTEER SELECTION
+            if available_volunteers:
+                volunteer_names = [v["volunteerName"] for v in available_volunteers]
+                # Find closest match to user input
+                matches = get_close_matches(user_input.lower(), [n.lower() for n in volunteer_names], n=1, cutoff=0.6)
+                if matches:
+                    matched_name = matches[0]
+                    # Get volunteer entry/entries
+                    matched_volunteers = [v for v in available_volunteers if v["volunteerName"].lower() == matched_name]
+                    logger.info(f"✅ Matched volunteer: {matched_name}")
+
+                    # Check requested date & time
+                    requested_date = journey_data.get("journey_date")
+                    requested_time = journey_data.get("pickup_time")
+                    if requested_date and requested_time:
+                        matched_schedule = None
+                        for volunteer in matched_volunteers:
+                            schedule = volunteer.get("schedule", {})
+                            from_time = schedule.get("fromTime")
+                            to_time = schedule.get("toTime")
+                            date = schedule.get("date")
+                            if date == requested_date and from_time <= requested_time <= to_time:
+                                matched_schedule = volunteer
+                                break
+
+                        if matched_schedule:
+                            # Send journey request automatically
+                            self.tools["booking"]["send_journey_request_to_volunteer"](
+                                user_id=user_id,
+                                auth_token=auth_token,
+                                journey_data=journey_data,
+                                selected_volunteer=matched_schedule
+                            )
+                            response_text = (
+                                f"Your journey request has been sent to {matched_schedule['volunteerName']}. "
+                                "We’ll notify you once the volunteer responds."
+                            )
+                        else:
+                            response_text = (
+                                f"No available schedule for {matched_volunteers[0]['volunteerName']} "
+                                f"at the requested time. Please select a different time or volunteer."
+                            )
+                    else:
+                        response_text = (
+                            f"I need the journey date and time to match {matched_volunteers[0]['volunteerName']}'s schedule."
+                        )
+
+                    updated_messages = messages + [{"role": "assistant", "content": response_text}]
+                    return self._update_state(state, {"messages": updated_messages})
+
+
             # Create ReAct agent with all booking tools
             booking_tools = self.tools["booking"]
             booking_agent = create_react_agent(self.llm, booking_tools)
@@ -538,8 +593,8 @@ Be helpful, use tools, ask for missing info one at a time."""
 
 
             # Get conversation context from database
-            journey_data = state.get("journey_data", {})
-            user_id = user_context.get("user_id")
+            # journey_data = state.get("journey_data", {})
+            # user_id = user_context.get("user_id")
 
             # Get conversation context from database
             conversation_context = self.chat_history_service.get_conversation_context(user_id)
@@ -1264,7 +1319,7 @@ Return ONLY the classified reason (Flexible, Important, or Very Important), no a
                 }
 
                 # Call the volunteer search API
-                result = search_volunteers_api(session,auth_token,user_id, journey_data)
+                result = search_volunteers_api(session, journey_data)
 
                 if result.get("success", False):
                     journey_data["available_volunteers"] = result.get("volunteers", [])

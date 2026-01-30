@@ -291,72 +291,209 @@ def save_address_to_api(session, address_data, address_category="Pickup", existi
             "message": f"Unexpected error while saving {address_category.lower()} address: {str(e)}"
         }
 
-def search_volunteers_api(session,auth_token, user_id, journey_data):
+# def search_volunteers_api(session,auth_token, user_id, journey_data):
+#     """Search for volunteers using Travel Hands API"""
+#     try:
+#     #     # Map journey reason to full description
+#     #     reason_mapping = {
+#     #         "Flexible": "Flexible or leisure activity eg. a walk in the park - Not time sensitive and can easily be postponed",
+#     #         "Important": "Important appointment or commitment - Some flexibility but preferably not postponed",
+#     #         "Very Important": "Very important or urgent appointment - Time critical and cannot be postponed"
+#     #     }
+
+#     #     journey_reason_full = reason_mapping.get(journey_data.get('journey_reason', 'Flexible'),
+#     #                                             journey_data.get('journey_reason', 'Flexible'))
+
+#     #     # Validate pickup_time format before making API call
+#     #     pickup_time = journey_data.get('pickup_time', '')
+#     #     if pickup_time and not re.match(r'^\d{2}:\d{2}:\d{2}$', pickup_time):
+#     #         logging.error(f"Invalid pickup_time format: '{pickup_time}'. Expected HH:MM:SS format.")
+#     #         # Try to parse it one more time
+#     #         parsed_time = parse_pickup_time(pickup_time)
+#     #         if parsed_time:
+#     #             journey_data['pickup_time'] = parsed_time
+#     #             logging.info(f"Successfully re-parsed pickup_time: '{pickup_time}' -> '{parsed_time}'")
+#     #         else:
+#     #             # Set a default time if parsing fails
+#     #             journey_data['pickup_time'] = "09:00:00"
+#     #             logging.warning(f"Failed to parse pickup_time '{pickup_time}', using default '09:00:00'")
+
+#     #     # Validate required address IDs before making API call
+#     #     pickup_address_id = journey_data.get('pickup_address_id')
+#     #     dest_address_id = journey_data.get('dest_address_id')
+
+#     #     if not pickup_address_id:
+#     #         logging.error("Missing pickup_address_id - cannot search for volunteers")
+#     #         return {
+#     #             "success": False,
+#     #             "message": "Pickup address not found. Please provide a valid pickup address.",
+#     #             "volunteers": []
+#     #         }
+
+#     #     if not dest_address_id:
+#     #         logging.error("Missing dest_address_id - cannot search for volunteers")
+#     #         return {
+#     #             "success": False,
+#     #             "message": "Destination address not found. Please provide a valid destination address.",
+#     #             "volunteers": []
+#     #         }
+
+#         # Construct the payload
+#         payload = {
+#             "pickupAddressId": journey_data.get('pickup_address_id',''),
+#             "destinationAddressId": journey_data.get('dest_address_id',''),
+#             "pickupAdressName": journey_data.get('pickup_address_type', ''),
+#             "destinationAdressName": journey_data.get('dest_address_type', ''),
+#             "journeyReason": journey_data.get('journey_reason', ''),
+#             "jounreyDate": journey_data.get('journey_date', ''),
+#             "pickupTime": journey_data.get('pickup_time', ''),
+#             "journeyEndTime": "",
+#             "journeyNote": journey_data.get('journey_notes', 'None'),
+#             "totalTimeForVolunteer": journey_data.get('total_time_volunteer', '')
+#             }
+
+#         # Determine if journey is flexible
+#         is_flexible = "true" if journey_data.get('journey_reason') == "Flexible" else "false"
+
+#         # Construct the API endpoint - use dynamic user ID
+#         volunteer_search_endpoint = f"{travel_hands_api_base_url}/api/vip/volunteerSearch/{user_id}?isFlexible={is_flexible}"
+
+#         # Log the API request
+#         logging.info("=" * 80)
+#         logging.info("SEARCHING FOR VOLUNTEERS - TRAVEL HANDS API")
+#         logging.info("=" * 80)
+#         logging.info(f"Endpoint: {volunteer_search_endpoint}")
+#         logging.info(f"Payload: {json.dumps(payload, indent=2)}")
+
+     
+#         logging.info(f"🔑 API CALL TOKEN: {auth_token}")
+#         logging.info(f"🔑 Auth token for search_volunteers_api API call: {auth_token}...")
+
+#         headers = {
+#             "Authorization": f"Bearer {auth_token}",
+#             "Content-Type": "application/json",
+#             "Accept": "application/json"
+#         }
+
+#         # Make the API request
+#         response = requests.post(
+#             volunteer_search_endpoint,
+#             json=payload,
+#             headers=headers,
+#             timeout=30
+#         )
+
+#         # Log the response
+#         logging.info(f"Response Status: {response.status_code}")
+#         logging.info(f"Response Body: {response.text}")
+#         logging.info("=" * 80)
+
+#         if response.status_code in [200, 201]:
+#             return {
+#                 "success": True,
+#                 "message": "Volunteer search completed successfully!",
+#                 "response": response.json() if response.text else {},
+#                 "volunteers": response.json() if response.text else []
+#             }
+#         # Handle email authentication error
+#         elif response.status_code in [500]:
+#             logging.warning("No volunteers found - sending journey to customer support")
+#             return {
+#                 "success": False,
+#                 "message": "Your journey request has been sent to our customer support team as there are no available volunteers right now.",
+#                 "volunteers": []
+#             }
+#          # Handle other errors
+#         else:
+#             return {
+#                 "success": False,
+#                 "message": "Problem searching for volunteers. Please try again!",
+#                 "error": response.text,
+#             }
+
+#     except requests.exceptions.Timeout:
+#         return {
+#             "success": False,
+#             "message": "Request timeout while searching for volunteers"
+#         }
+#     except requests.exceptions.RequestException as e:
+#         return {
+#             "success": False,
+#             "message": f"Network error while searching for volunteers: {str(e)}"
+#         }
+#     except Exception as e:
+#         return {
+#             "success": False,
+#             "message": f"Unexpected error while searching for volunteers: {str(e)}"
+#         }
+
+
+def search_volunteers_api(session, journey_data):
     """Search for volunteers using Travel Hands API"""
     try:
-    #     # Map journey reason to full description
-    #     reason_mapping = {
-    #         "Flexible": "Flexible or leisure activity eg. a walk in the park - Not time sensitive and can easily be postponed",
-    #         "Important": "Important appointment or commitment - Some flexibility but preferably not postponed",
-    #         "Very Important": "Very important or urgent appointment - Time critical and cannot be postponed"
-    #     }
+        # Map journey reason to full description
+        reason_mapping = {
+            "Flexible": "Flexible or leisure activity eg. a walk in the park - Not time sensitive and can easily be postponed",
+            "Important": "Important appointment or commitment - Some flexibility but preferably not postponed",
+            "Very Important": "Very important or urgent appointment - Time critical and cannot be postponed"
+        }
 
-    #     journey_reason_full = reason_mapping.get(journey_data.get('journey_reason', 'Flexible'),
-    #                                             journey_data.get('journey_reason', 'Flexible'))
+        journey_reason_full = reason_mapping.get(journey_data.get('journey_reason', 'Flexible'),
+                                                journey_data.get('journey_reason', 'Flexible'))
 
-    #     # Validate pickup_time format before making API call
-    #     pickup_time = journey_data.get('pickup_time', '')
-    #     if pickup_time and not re.match(r'^\d{2}:\d{2}:\d{2}$', pickup_time):
-    #         logging.error(f"Invalid pickup_time format: '{pickup_time}'. Expected HH:MM:SS format.")
-    #         # Try to parse it one more time
-    #         parsed_time = parse_pickup_time(pickup_time)
-    #         if parsed_time:
-    #             journey_data['pickup_time'] = parsed_time
-    #             logging.info(f"Successfully re-parsed pickup_time: '{pickup_time}' -> '{parsed_time}'")
-    #         else:
-    #             # Set a default time if parsing fails
-    #             journey_data['pickup_time'] = "09:00:00"
-    #             logging.warning(f"Failed to parse pickup_time '{pickup_time}', using default '09:00:00'")
+        # Validate pickup_time format before making API call
+        pickup_time = journey_data.get('pickup_time', '')
+        if pickup_time and not re.match(r'^\d{2}:\d{2}:\d{2}$', pickup_time):
+            logging.error(f"Invalid pickup_time format: '{pickup_time}'. Expected HH:MM:SS format.")
+            # Try to parse it one more time
+            parsed_time = parse_pickup_time(pickup_time)
+            if parsed_time:
+                journey_data['pickup_time'] = parsed_time
+                logging.info(f"Successfully re-parsed pickup_time: '{pickup_time}' -> '{parsed_time}'")
+            else:
+                # Set a default time if parsing fails
+                journey_data['pickup_time'] = "09:00:00"
+                logging.warning(f"Failed to parse pickup_time '{pickup_time}', using default '09:00:00'")
 
-    #     # Validate required address IDs before making API call
-    #     pickup_address_id = journey_data.get('pickup_address_id')
-    #     dest_address_id = journey_data.get('dest_address_id')
+        # Validate required address IDs before making API call
+        pickup_address_id = journey_data.get('pickup_address_id')
+        dest_address_id = journey_data.get('dest_address_id')
 
-    #     if not pickup_address_id:
-    #         logging.error("Missing pickup_address_id - cannot search for volunteers")
-    #         return {
-    #             "success": False,
-    #             "message": "Pickup address not found. Please provide a valid pickup address.",
-    #             "volunteers": []
-    #         }
+        if not pickup_address_id:
+            logging.error("Missing pickup_address_id - cannot search for volunteers")
+            return {
+                "success": False,
+                "message": "Pickup address not found. Please provide a valid pickup address.",
+                "volunteers": []
+            }
 
-    #     if not dest_address_id:
-    #         logging.error("Missing dest_address_id - cannot search for volunteers")
-    #         return {
-    #             "success": False,
-    #             "message": "Destination address not found. Please provide a valid destination address.",
-    #             "volunteers": []
-    #         }
+        if not dest_address_id:
+            logging.error("Missing dest_address_id - cannot search for volunteers")
+            return {
+                "success": False,
+                "message": "Destination address not found. Please provide a valid destination address.",
+                "volunteers": []
+            }
 
         # Construct the payload
         payload = {
-            "pickupAddressId": journey_data.get('pickup_address_id',''),
-            "destinationAddressId": journey_data.get('dest_address_id',''),
+            "pickupAddressId": pickup_address_id,
+            "destinationAddressId": dest_address_id,
             "pickupAdressName": journey_data.get('pickup_address_type', ''),
             "destinationAdressName": journey_data.get('dest_address_type', ''),
-            "journeyReason": journey_data.get('journey_reason', ''),
+            "journeyReason": journey_reason_full,
             "jounreyDate": journey_data.get('journey_date', ''),
             "pickupTime": journey_data.get('pickup_time', ''),
             "journeyEndTime": "",
             "journeyNote": journey_data.get('journey_notes', 'None'),
             "totalTimeForVolunteer": journey_data.get('total_time_volunteer', '')
-            }
+        }
 
         # Determine if journey is flexible
         is_flexible = "true" if journey_data.get('journey_reason') == "Flexible" else "false"
 
         # Construct the API endpoint - use dynamic user ID
-        volunteer_search_endpoint = f"{travel_hands_api_base_url}/api/vip/volunteerSearch/{user_id}?isFlexible={is_flexible}"
+        volunteer_search_endpoint = f"{travel_hands_api_base_url}/api/vip/volunteerSearch/{session.user_id}?isFlexible={is_flexible}"
 
         # Log the API request
         logging.info("=" * 80)
@@ -365,9 +502,17 @@ def search_volunteers_api(session,auth_token, user_id, journey_data):
         logging.info(f"Endpoint: {volunteer_search_endpoint}")
         logging.info(f"Payload: {json.dumps(payload, indent=2)}")
 
-     
+        # Use the same authorization token
+        auth_token = get_auth_token(session)
+        if not auth_token:
+            return {
+                "success": False,
+                "error": "No valid authentication token available",
+                "volunteers": []
+            }
+
         logging.info(f"🔑 API CALL TOKEN: {auth_token}")
-        logging.info(f"🔑 Auth token for search_volunteers_api API call: {auth_token}...")
+        logging.info(f"🔑 Auth token for search_volunteers_api API call: {auth_token[:20]}...")
 
         headers = {
             "Authorization": f"Bearer {auth_token}",
@@ -387,6 +532,21 @@ def search_volunteers_api(session,auth_token, user_id, journey_data):
         logging.info(f"Response Status: {response.status_code}")
         logging.info(f"Response Body: {response.text}")
         logging.info("=" * 80)
+
+        # if response.status_code in [200, 201]:
+        #     return {
+        #         "success": True,
+        #         "message": "Volunteer search completed successfully!",
+        #         "response": response.json() if response.text else {},
+        #         "volunteers": response.json() if response.text else []
+        #     }
+        # else:
+        #     return {
+        #         "success": False,
+        #         "message": "Problem searching for volunteers. Please try again!",
+        #         "error": response.text
+        #     }
+
 
         if response.status_code in [200, 201]:
             return {
@@ -426,7 +586,7 @@ def search_volunteers_api(session,auth_token, user_id, journey_data):
             "success": False,
             "message": f"Unexpected error while searching for volunteers: {str(e)}"
         }
-
+    
 def handle_send_journey_request_to_volunteer(session,journey_data, selected_volunteer):
     """Handles real backend API call to send journey request to Travel Hands with selected volunteer"""
 
