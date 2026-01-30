@@ -99,24 +99,37 @@ class SessionManager:
     #         return self._create_session(user_id, user_name, auth_token)
 
 # NEW CODE ADDED TO RESOLVE JWT TOKEN ISSUE
+    # def get_or_create_session(self, user_id: str, user_name: str, auth_token: str) -> JourneySession:
+    #     with self._lock:
+    #         session = self._get_session(user_id)
+
+    #         if session:
+    #             # 🚨 If token changes, treat as NEW login/session
+    #             if auth_token and session.auth_token != auth_token:
+    #                 logger.warning(
+    #                     f"JWT changed for user {user_id}. Creating new session."
+    #                 )
+    #                 return self._create_session(user_id, user_name, auth_token)
+
+    #             return session
+
+    #         # No session exists → create new
+    #         return self._create_session(user_id, user_name, auth_token)
+
+        
     def get_or_create_session(self, user_id: str, user_name: str, auth_token: str) -> JourneySession:
         with self._lock:
             session = self._get_session(user_id)
 
             if session:
-                # 🚨 If token changes, treat as NEW login/session
-                if auth_token and session.auth_token != auth_token:
-                    logger.warning(
-                        f"JWT changed for user {user_id}. Creating new session."
-                    )
-                    return self._create_session(user_id, user_name, auth_token)
+                # ✅ Only set token once (first request)
+                if session.auth_token is None and auth_token:
+                    session.auth_token = auth_token
 
                 return session
 
             # No session exists → create new
             return self._create_session(user_id, user_name, auth_token)
-
-        
 
 
     # JOURNEY RESET LOGIC (KEY FUNCTION FOR YOUR REQUIREMENT)
