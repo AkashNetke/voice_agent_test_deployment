@@ -108,7 +108,7 @@ def voice_agent(payload: Request = Body(...)):
     # Log incoming request details
     logger.info(f"🔵 INCOMING REQUEST - User: {payload.user_id}, Type: {payload.type.value}")
     logger.info(f"📊 Request details - Session: {payload.user_id}, Name: {payload.user_name}")
-    logger.info(f"🔑 Auth token received: {payload.token[:20] if payload.token else 'None'}...")
+    logger.info(f"🔑 Auth token received: {payload.token if payload.token else 'None'}")
     if payload.data:
         logger.info(f"📏 Payload size: {len(payload.data)} characters")
     else:
@@ -186,7 +186,7 @@ def voice_agent(payload: Request = Body(...)):
         greeting_audio = None
         if (payload.type == MessageType.USER_VOICE_MESSAGE or payload.type == MessageType.REQUEST_GREETING) and app_state.audio_processor:
             try:
-                greeting_audio = app_state.audio_processor.text_to_speech_base64(greeting_message, "greeting")
+                greeting_audio = app_state.audio_processor.text_to_speech_base64(greeting_message)
                 logger.info(f"✅ Greeting audio generated successfully")
 
             except Exception as e:
@@ -227,8 +227,7 @@ def voice_agent(payload: Request = Body(...)):
     # Process user input through Enhanced LangGraph agent
     try:
         response_text, is_complete = app_state.enhanced_langgraph_agent.process_booking_request(
-            session, user_text
-        )
+            session, user_text)
         logger.info(f"Enhanced LangGraph agent response: {response_text[:100]}...")
 
     except Exception as e:
@@ -255,7 +254,7 @@ def voice_agent(payload: Request = Body(...)):
         try:
             # Determine message type for appropriate tone
             message_type = "success" if is_complete else "general"
-            response_audio = app_state.audio_processor.text_to_speech_base64(response_text, message_type)
+            response_audio = app_state.audio_processor.text_to_speech_base64(response_text)
 
             logger.info(f"Response audio generated successfully")
 
