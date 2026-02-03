@@ -3,12 +3,14 @@ Enhanced LangGraph Multi-Agent Journey Booking System
 """
 
 from difflib import get_close_matches
+import json
 import os
 import re
 import logging
 from typing import Dict, Any, List, Optional, TypedDict
 from datetime import datetime
 
+from langchain_aws import ChatBedrock
 import requests
 
 from langgraph.prebuilt import create_react_agent
@@ -76,6 +78,34 @@ class EnhancedLangGraphBookingAgent:
                 temperature=0.1,
                 max_tokens=4000
             )
+            # self.llm = ChatBedrock(
+            #     model_id="openai.gpt-oss-120b-1:0",
+            #     region_name=os.getenv("AWS_REGION", "us-east-1"),
+            #     model_kwargs={
+            #         "temperature": 0.1,
+            #         "top_p": 0.9,
+            #         "max_tokens": 4000
+            #     }
+            # )
+
+
+             # Initialize the FSM state
+            self.state = {
+                "current_step": "PICKUP_ADDRESS",
+                "journey_data": {
+                    "pickup_address_id": None,
+                    "pickup_address_name": None,
+                    "destination_address_id": None,
+                    "destination_address_name": None,
+                    "journey_date": None,
+                    "pickup_time": None,
+                    "journey_reason": None,
+                    "total_time_volunteer": None,
+                    "journey_notes": "",
+                    "available_volunteers": []
+                },
+                "last_step_data": {}  # temporary storage for fetched addresses/volunteers
+            }
 
             # Create tools for agents - Simplified architecture
             self.tools = {
@@ -307,389 +337,7 @@ Analyze the conversation context carefully and respond with ONLY the agent name 
                 "current_agent": "supervising_chatbot"
             })
 
-#     def _booking_agent(self, state: JourneyBookingState) -> JourneyBookingState:
-#         """Comprehensive journey booking agent - handles addresses, dates, times, volunteer duration, and booking workflow"""
 
-#         start_time = datetime.now().timestamp()
-
-#         try:
-#             logger.info("📝 BOOKING AGENT: Processing booking request")
-#             messages = state.get("messages", [])
-#             latest_message = messages[-1] if messages else HumanMessage(content="I want to book a journey")
-#             user_input = latest_message.content if hasattr(latest_message, 'content') else str(latest_message)
-#             user_context = state.get("user_context", {})
-#             logger.info(f"📝 BOOKING AGENT INPUT: '{user_input[:100]}...'")
-
-#             # Get user credentials for tools
-#             user_id = user_context.get("user_id")
-#             auth_token = user_context.get("auth_token", "")
-
-#             # 🔐 HARD GUARD: Volunteer selection handling
-#             # journey_data = state.get("journey_data", {})
-#             # available_volunteers = journey_data.get("available_volunteers", [])
-
-#             # if available_volunteers:
-#             #     normalized_input = user_input.lower().strip()
-
-#             #     for volunteer in available_volunteers:
-#             #         if volunteer["volunteerName"].lower() in normalized_input:
-#             #             logger.info("✅ Volunteer selected explicitly by user")
-
-#             #             return self._send_journey_request_to_volunteer_directly(
-#             #                 state=state,
-#             #                 selected_volunteer=volunteer
-#             #             )
-
-#             journey_data = state.get("journey_data", {})
-#             available_volunteers = journey_data.get("available_volunteers", [])
-
-#             # FUZZY VOLUNTEER SELECTION
-#             if available_volunteers:
-#                 volunteer_names = [v["volunteerName"] for v in available_volunteers]
-#                 # Find closest match to user input
-#                 matches = get_close_matches(user_input.lower(), [n.lower() for n in volunteer_names], n=1, cutoff=0.6)
-#                 if matches:
-#                     matched_name = matches[0]
-#                     # Get volunteer entry/entries
-#                     matched_volunteers = [v for v in available_volunteers if v["volunteerName"].lower() == matched_name]
-#                     logger.info(f"✅ Matched volunteer: {matched_name}")
-
-#                     # Check requested date & time
-#                     requested_date = journey_data.get("journey_date")
-#                     requested_time = journey_data.get("pickup_time")
-#                     if requested_date and requested_time:
-#                         matched_schedule = None
-#                         for volunteer in matched_volunteers:
-#                             schedule = volunteer.get("schedule", {})
-#                             from_time = schedule.get("fromTime")
-#                             to_time = schedule.get("toTime")
-#                             date = schedule.get("date")
-#                             if date == requested_date and from_time <= requested_time <= to_time:
-#                                 matched_schedule = volunteer
-#                                 break
-
-#                         if matched_schedule:
-#                             # Send journey request automatically
-#                             self.tools["booking"]["send_journey_request_to_volunteer"](
-#                                 user_id=user_id,
-#                                 auth_token=auth_token,
-#                                 journey_data=journey_data,
-#                                 selected_volunteer=matched_schedule
-#                             )
-#                             response_text = (
-#                                 f"Your journey request has been sent to {matched_schedule['volunteerName']}. "
-#                                 "We’ll notify you once the volunteer responds."
-#                             )
-#                         else:
-#                             response_text = (
-#                                 f"No available schedule for {matched_volunteers[0]['volunteerName']} "
-#                                 f"at the requested time. Please select a different time or volunteer."
-#                             )
-#                     else:
-#                         response_text = (
-#                             f"I need the journey date and time to match {matched_volunteers[0]['volunteerName']}'s schedule."
-#                         )
-
-#                     updated_messages = messages + [{"role": "assistant", "content": response_text}]
-#                     return self._update_state(state, {"messages": updated_messages})
-
-
-#             # Create ReAct agent with all booking tools
-#             booking_tools = self.tools["booking"]
-#             booking_agent = create_react_agent(self.llm, booking_tools)
-
-#             system_prompt = """You are a comprehensive journey booking assistant for Travel Hands.
-
-# Available tools:
-# - get_saved_addresses: Get user's saved addresses (requires user_id, auth_token, user_name)
-# - save_new_address: Save new address if not in saved list (requires user_id, auth_token, user_name, address_line1, address_line2, postcode, address_category)
-# - validate_address: Validate address format
-# - extract_date: Extract dates from natural language
-# - validate_date: Validate date format
-# - format_date: Format date to DD-MM-YYYY
-# - extract_time: Extract times from natural language
-# - validate_time: Validate time format
-# - format_time: Format time to HH:MM:SS
-# - extract_volunteer_time: Extract volunteer duration,,total time the VIP wants to spend with the volunteer
-# - validate_volunteer_time: Validate volunteer time options
-# - map_volunteer_time: Map user input to volunteer time options
-# - extract_journey_reason: Extract journey reason (Flexible/Important/Very Important)
-# - search_volunteers_and_save_journey_details: Search volunteers when all info collected (requires user_id, auth_token, user_name, pickup_address_id, destination_address_id, pickup_address_name, destination_address_name, journey_date, pickup_time, journey_reason, total_time_volunteer)
-# - send_journey_request_to_volunteer: Confirm and send journey request with selected volunteer (requires user_id, auth_token, journey_data, selected_volunteer with scheduleId and searchId)
-# - validate_journey_data: Validate complete journey data
-# - get_tfl_route : Get route information from TFL API (requires origin and destination)
-# - reset_journey_session: It allows the user to start booking a new journey, Reset the current journey context only (requires user_id, reason)
-
-# Booking Agent Personality & Behaviour Guidelines:
-# -You are a natural, calm, human-like assistant helping a visually impaired user book a journey.
-# - You exist ONLY to help the user complete a journey booking.
-# - You MUST follow the rules exactly.
-# - You MUST NOT guess, assume, infer, invent, or hallucinate any data.
-# - If required data is missing, you MUST ask ONE short question for that data.
-# - You MUST NOT repeat questions.
-# - You MUST NOT loop.
-# - You MUST NOT explain your reasoning.
-# - You MUST NOT generate long responses.
-# -When collecting information:
-# -Ask short questions like:
-#     -“What’s the reason for this journey?”
-#     -“What time would you like to travel?”
-#     -“How long are you okay waiting for a volunteer?”
-#     -Do not mention examples unless needed.
-# -Tone examples:
-# -Natural: “Got it.” / “Sure.” / “Okay, thanks.”
-# -Not acceptable: “I have processed your request and updated the destination. Now please provide the journey reason…”
-# -Do not:
-# -Speak like a robot
-# -Provide long descriptions
-# -Over-explain system actions
-# -Repeat saved addresses unless needed for confirmation
-# -Mention any internal reasoning or steps
-# -Generate paragraphs
-
-
-# JOURNEY RESET RULES (CRITICAL):
-# - reset_journey_session MUST be called ONLY after explicit user confirmation
-# - NEVER assume intent
-# - NEVER reset automatically
-# - Reset clears ONLY current journey data, NOT authentication or session
-# VALID RESET CONFIRMATION:
-# Treat these as confirmation:
-# - "yes, start a new journey"
-# - "start a new journey"
-# - "reset this journey"
-# - "cancel this journey"
-# - "book a new journey"
-# - "yes, start again"
-# CONFIRMATION FLOW:
-# If a journey is already in progress and user indicates intent to start again but has NOT confirmed:
-# Ask exactly:
-# "You already have a journey in progress. Do you want me to cancel it and start a new journey?"
-# TOOL CALL (EXACT):
-# When confirmed, immediately call reset_journey_session 
-# POST RESET:
-# - Acknowledge briefly
-# - Do NOT repeat old journey details
-# - Ask the first booking question only
-# Example:
-# "Okay, I’ve cleared the previous journey. Where should I pick you up from?"
-
-
-# Required fields:
-# - pickup_address: Pickup location name
-# - pickup_address_id: Pickup location ID (from saved addresses)
-# - pickup_address_name: Full pickup address line (from saved addresses)
-# - destination_address: Destination location name
-# - destination_address_id: Destination location ID (from saved addresses)
-# - destination_address_name: Full destination address line (from saved addresses)
-# - journey_date: Date (DD-MM-YYYY)
-# - pickup_time: Time (HH:MM:SS)
-# - journey_reason: Reason (Flexible/Important/Very Important)
-# - total_time_volunteer: Total time the VIP wants to spend with the volunteer, including travel and any assistance time (upto 30 minutes/upto 40 minutes/upto 1 hour/upto 1 and half hour/upto 2 hour/upto 2 and half hour/upto 3 hours/above 3 hours)
-# - journey_notes: Notes (optional but should be asked about)
-
-# ADDRESS HANDLING:
-# When processing addresses:
-# 1. Use get_saved_addresses to get user's saved addresses with IDs and address lines
-# 2. Use AI reasoning to match user input to address types and extract the correct address ID AND address line
-# 3. Store both address name AND address_id AND address_line in journey_data
-# 4. Use the correct address_id and address_line when calling search_volunteers_and_save_journey_details
-
-# CRITICAL: When extracting address IDs from get_saved_addresses output:
-# - The API returns JSON format: [{{"addressId":502,"addressType":"Home","addressLine1":"","addressLine2":"Mercator Estate, Greater London","cityName":"London","postCode":"SE13 5HE","additionalComment":"none"}}]
-# - Extract the exact "addressId" value from the JSON object
-# - Match the "addressType" to user input (e.g., "Home" for "home", "School" for "school")
-# - Use the exact "addressId" number for the address_id parameter
-# - Do NOT make up or guess address IDs
-
-# Example: If user says pick up from "home" and API returns [{{"addressId":502,"addressType":"Home","addressLine1":"",...}}], extract addressId 502 for pickup_address_id.
-
-# Example: If user says destination is "school" and API returns [{{"addressId":516,"addressType":"School","addressLine1":"Senate House, Mallet Street, London",...}}], extract addressId 516 for destination_address_id.
-
-# CONFIRMATION WORKFLOW:
-# When all required fields are collected:
-# 1. Ask about journey notes if not provided
-# 2. Present a clear summary of all journey details ONLY at final confirmation
-# 3. Ask for user confirmation: "Does this look correct? Please say yes to proceed or let me know if you'd like to change anything"
-# 4. Only call search_volunteers_and_save_journey_details tool after user confirms
-
-# CONFIRMATION DETECTION:
-# When user responds to confirmation request, recognize these as "YES" to proceed:
-# - "yes", "yeah", "yep", "sure", "okay", "ok", "looks good", "it looks good", "that's fine", "perfect", "correct", "right", "thanks", "thank you"
-# - Any positive response that indicates agreement or satisfaction
-# - If user says "yes" or any positive confirmation, immediately call search_volunteers_and_save_journey_details tool
-# - If user wants changes, ask what they'd like to modify
-
-# CRITICAL VOLUNTEER CONFIRMATION RULE:
-# - When available volunteers have already been presented
-# - AND the user clearly selects one by name
-# - You MUST NOT generate conversational responses
-# - You MUST call send_journey_request_to_volunteer immediately
-# - NEVER say "there was an issue" unless the tool explicitly fails
-
-# CRITICAL POST-TOOL RESPONSE RULE:
-
-# When the tool send_journey_request_to_volunteer is called
-# AND it returns success=true:
-
-# - This means ONLY that a REQUEST has been sent.
-# - The volunteer has NOT accepted yet.
-
-# You MUST:
-# - Say: "Your journey request has been sent to <VOLUNTEER_NAME>."
-# - Optionally add: "We’ll notify you once the volunteer responds."
-
-# You MUST NOT:
-# - Say "confirmed", "booked", "scheduled", or "completed"
-# - Imply acceptance or finalization
-# - Rephrase this meaning in any way
-
-# CONVERSATION GUIDELINES:
-# - Keep responses concise and focused on what the user needs to know
-# - Don't repeat journey details unless it's the final confirmation step
-# - Don't show technical details like address IDs to users
-# - Only show full journey summary when asking for final confirmation
-# - Ask for one piece of information at a time
-# - Use natural, conversational language
-# - If you just asked for confirmation and user responds positively, treat it as confirmation
-# - If you just asked for journey notes and user responds, treat it as notes or confirmation
-# - Always consider the previous conversation context to understand the current state
-# - Don't treat confirmation responses as new booking requests
-
-
-# ADDRESS CATEGORY GUIDANCE:
-# When saving new addresses follow these rules:
-# - address_category MUST come directly from the user's words.
-# - NEVER reinterpret, normalize, or change the category.
-# - If the user says "villa", pass "villa".
-# - If the user says "home", pass "home".
-# - If the user has not specified a category, ASK the user what category they want.
-# - Do NOT guess or auto-map categories.
-
-# Process user input by:
-# 1. Using AI reasoning to extract booking information from natural language
-# 2. Using tools to handle addresses (get saved, match, save new)
-# 3. Using tools to process dates/times (extract, validate, format)
-# 4. Using tools to map volunteer duration
-# 5. Using tools to extract journey reason (when user mentions flexible, important, urgent, etc.)
-# 6. Using AI reasoning to collect missing information progressively
-# 7. When ALL required fields are complete, ask for user to confirm all the journey details first and then call search_volunteers_and_save_journey_details tool
-# 8. After calling search_volunteers_and_save_journey_details, present available volunteers to user for selection
-# 9. After user selects volunteer, extract the volunteer's scheduleId and searchId on your own from the selected volunteer data and call send_journey_request_to_volunteer tool.
-# 10. When replying user with date, you need to be aware the date is in DD-MM-YYYY (Day-Month-Year) format, you need to answer it in a user friendly format.
-# 11. If user wants to know the route, use get_tfl_route tool to get route information from TFL API
-# 12. The route feature is only for providing travel directions to the user, don't mix it with the volunteer booking process.
-# 13. If user asks for travel directions or route (e.g., “how do I reach?”, “give me route”, “what is the path?”), dont ask if they want to book a journey with those routes, just provide the route information.
-
-# JOURNEY REASON EXTRACTION:
-# When user mentions journey importance (flexible, important, urgent, etc.), ALWAYS use the extract_journey_reason tool to classify it properly.
-# Examples: "flexible" → use extract_journey_reason tool → "Flexible"
-
-# CRITICAL: When you have all required information (pickup_address_id, destination_address_id, journey_date, pickup_time, journey_reason, total_time_volunteer), you MUST call the search_volunteers_and_save_journey_details tool to complete the booking.
-
-# IMPORTANT: Use AI reasoning and tools for ALL extraction and processing.
-
-# Be helpful, use tools, ask for missing info one at a time."""
-
-
-#             # Get conversation context from database
-#             # journey_data = state.get("journey_data", {})
-#             # user_id = user_context.get("user_id")
-
-#             # Get conversation context from database
-#             conversation_context = self.chat_history_service.get_conversation_context(user_id)
-#             if conversation_context == "No previous conversation context.":
-#                 conversation_context = ""
-
-#             context = f"""
-# User ID: {user_id}
-# Auth Token: {auth_token})
-
-# Current journey data: {journey_data}
-# Missing fields: {state.get('missing_fields', [])}
-
-# {conversation_context}
-
-# Current user input: "{user_input}"
-
-# IMPORTANT:
-# 1. Extract any new booking information from the current user input
-# 2. Update the journey_data with any new information found
-# 3. Use conversation history to understand context
-# 4. Don't ask for information that has already been provided
-# 5. Build upon previous conversation to collect missing information progressively
-# 6. If user mentions journey importance (flexible, important, urgent), use extract_journey_reason tool
-# 7. For addresses: Use get_saved_addresses to get addresses with IDs and address lines, then use AI reasoning to match user input and extract both the correct address ID AND address line. CRITICAL: The API returns JSON format [{{"addressId":502,"addressType":"Home","addressLine1":"n",...}}] - extract the exact "addressId" value from the JSON object, do not make up IDs
-# 8. Always ask about journey notes - if user hasn't provided any notes, ask if they want to add any comments or special instructions
-# 9. If ALL required fields are complete, verify all the journey details with the user and ask for confirmation before calling search_volunteers_and_save_journey_details tool
-# 10. When user confirms (says "yes", "looks good", "thanks", etc.), immediately call search_volunteers_and_save_journey_details tool.
-# 11. If no volunteers found then inform user politely and tell them that your journey is sent to our customer support team for further assistance.
-# 12. Let the user to select from available volunteers after calling search_volunteers_and_save_journey_details tool
-# 13. After the user selects volunteer, extract the volunteer's scheduleId and searchId from the selected volunteer data and call send_journey_request_to_volunteer tool.
-# 14. Don't ask user to give scheduleId or searchId - extract these on your own from the selected volunteer data.
-# 15. Keep responses short - only show full journey details at final confirmation
-# 16. When replying user with date, you need to be aware the date is in DD-MM-YYYY (Day-Month-Year) format, you need to answer it in a user friendly format.
-# 17.If the user wants travel directions or route (e.g., “how do I reach?”, “give me route”, “what is the path?”), 
-#    → call get_tfl_route tool with origin as pickup_address_name and destination as destination_address_name to get route information from TFL API and present it to the user.
-# 18. The route feature is only for providing travel directions to the user, don't mix it with the volunteer booking process.   
-# 19. Only show full journey summary at the time of searching for volunteers.
-# 20. Don't repeate journey details on every step, prefer brief acknowledgements like "Got it", "Noted", "Thanks for the info", etc.
-# 21. If the user explicitly confirms starting a new journey, call reset_journey_session tool immediately.
-# 22. After reset, discard previous journey_data and begin fresh journey collection.
-# 23. Do NOT ask the VIP how long they are willing to wait for the volunteer. Always ask in terms of total journey duration.
-
-
-# RESET CHECK:
-# - If journey_data is NOT empty AND user input clearly indicates starting a new journey:
-#     - Ask for reset confirmation
-# - If confirmation already received:
-#     - Call reset_journey_session
-#     - Stop all other processing for this turn
-
-# CHECK: Are all required fields complete?
-# - If YES: Present a summary of all journey details and ask for user confirmation before calling search_volunteers_and_save_journey_details tool
-# - If NO: Ask for the next missing field in a concise way (don't repeat what you already know)
-
-# Process the user's booking request and collect any missing information.
-# """
-
-#             # Invoke the ReAct agent
-#             messages_list = [
-#                 SystemMessage(content=system_prompt),
-#                 HumanMessage(content=context)
-#             ]
-
-#             response = booking_agent.invoke(
-#                 {"messages": messages_list},
-#                 {"configurable": {"thread_id": f"booking_session_{user_id}"}}
-#             )
-
-#             # Extract response
-#             if response and "messages" in response:
-#                 last_message = response["messages"][-1]
-#                 response_text = last_message.content if last_message and hasattr(last_message, 'content') else "I can help you book a journey. What would you like to do?"
-#             else:
-#                 response_text = "I can help you book a journey. What would you like to do?"
-
-#             logger.info(f"✅ BOOKING AGENT RESPONSE: {response_text[:150]}...")
-
-#             # Add response to messages
-#             updated_messages = messages + [{"role": "assistant", "content": response_text}]
-
-#             return self._update_state(state, {
-#                 "messages": updated_messages,
-#                 "current_agent": "supervising_chatbot",
-#                 "routing_history": state.get("routing_history", []) + ["booking_agent -> supervising_chatbot"]
-#             })
-
-#         except Exception as e:
-#             logger.error(f"❌ Error in booking agent: {str(e)}")
-#             logger.error(f"❌ Full error traceback:", exc_info=True)
-#             return self._update_state(state, {
-#                 "messages": state.get("messages", []) + [{"role": "assistant", "content": "I can help you book a journey. What would you like to do?"}],
-#                 "current_agent": "supervising_chatbot"
-#             })
-        
     def _booking_agent(self, state: JourneyBookingState) -> JourneyBookingState:
         """Comprehensive journey booking agent - handles addresses, dates, times, volunteer duration, and booking workflow"""
 
@@ -700,6 +348,7 @@ Analyze the conversation context carefully and respond with ONLY the agent name 
             messages = state.get("messages", [])
             latest_message = messages[-1] if messages else HumanMessage(content="I want to book a journey")
             user_input = latest_message.content if hasattr(latest_message, 'content') else str(latest_message)
+            
             user_context = state.get("user_context", {})
             logger.info(f"📝 BOOKING AGENT INPUT: '{user_input[:100]}...'")
 
@@ -707,27 +356,15 @@ Analyze the conversation context carefully and respond with ONLY the agent name 
             user_id = user_context.get("user_id")
             auth_token = user_context.get("auth_token", "")
 
-            # # 🔐 HARD GUARD: Volunteer selection handling
-            # journey_data = state.get("journey_data", {})
-            # available_volunteers = journey_data.get("available_volunteers", [])
-
-            # if available_volunteers:
-            #     normalized_input = user_input.lower().strip()
-
-            #     for volunteer in available_volunteers:
-            #         if volunteer["volunteerName"].lower() in normalized_input:
-            #             logger.info("✅ Volunteer selected explicitly by user")
-
-            #             return self._send_journey_request_to_volunteer_directly(
-            #                 state=state,
-            #                 selected_volunteer=volunteer
-            #             )
-
+           
             # Create ReAct agent with all booking tools
             booking_tools = self.tools["booking"]
+    
+
             booking_agent = create_react_agent(self.llm, booking_tools)
 
             system_prompt = """You are a comprehensive journey booking assistant for Travel Hands.
+
 
 Available tools:
 - get_saved_addresses: Get user's saved addresses (requires user_id, auth_token, user_name)
@@ -744,7 +381,7 @@ Available tools:
 - map_volunteer_time: Map user input to volunteer time options
 - extract_journey_reason: Extract journey reason (Flexible/Important/Very Important)
 - search_volunteers_and_save_journey_details: Search volunteers when all info collected (requires user_id, auth_token, user_name, pickup_address_id, destination_address_id, pickup_address_name, destination_address_name, journey_date, pickup_time, journey_reason, total_time_volunteer)
-- send_journey_request_to_volunteer: Confirm and send journey request with selected volunteer (requires user_id, auth_token, journey_data, selected_volunteer with scheduleId and searchId)
+- send_journey_request_to_volunteer:send journey request with selected volunteer (requires user_id, auth_token, journey_data, selected_volunteer with scheduleId and searchId)
 - validate_journey_data: Validate complete journey data
 - get_tfl_route : Get route information from TFL API (requires origin and destination)
 - reset_journey_session: It allows the user to start booking a new journey, Reset the current journey context only (requires user_id, reason)
@@ -823,17 +460,17 @@ When processing addresses:
 2. Use AI reasoning to match user input to address types and extract the correct address ID AND address line
 3. Store both address name AND address_id AND address_line in journey_data
 4. Use the correct address_id and address_line when calling search_volunteers_and_save_journey_details
+5. Do NOT guess or invent address IDs.
+6. If no matching addressType exists, ask the user to clarify or provide the address.
 
 CRITICAL: When extracting address IDs from get_saved_addresses output:
-- The API returns JSON format: [{{"addressId":502,"addressType":"Home","addressLine1":"","addressLine2":"Mercator Estate, Greater London","cityName":"London","postCode":"SE13 5HE","additionalComment":"none"}}]
-- Extract the exact "addressId" value from the JSON object
-- Match the "addressType" to user input (e.g., "Home" for "home", "School" for "school")
-- Use the exact "addressId" number for the address_id parameter
-- Do NOT make up or guess address IDs
+- The API returns JSON format: [{"addressId": <number>, "addressType": "<type>", "addressLine1": "<line1>", "addressLine2": "<line2>", "cityName": "<city>", "postCode": "<postcode>", "additionalComment": "<comment>"}]
+- Always find the object where "addressType" matches the user's input and extract its addressId for the relevant field (pickup or destination).
+- Do not default to any ID or use numbers from examples.
 
-Example: If user says pick up from "home" and API returns [{{"addressId":502,"addressType":"Home","addressLine1":"",...}}], extract addressId 502 for pickup_address_id.
-
-Example: If user says destination is "school" and API returns [{{"addressId":516,"addressType":"School","addressLine1":"Senate House, Mallet Street, London",...}}], extract addressId 516 for destination_address_id.
+Example: 
+- If user says pick up from "home", find the object where "addressType" is "Home" and extract its addressId for pickup_address_id.
+- If user says destination is "school", find the object where "addressType" is "School" and extract its addressId for destination_address_id.
 
 CONFIRMATION WORKFLOW:
 When all required fields are collected:
@@ -861,7 +498,7 @@ CONVERSATION GUIDELINES:
 - Don't treat confirmation responses as new booking requests
 
 
-ADDRESS CATEGORY GUIDANCE:
+SAVE NEW ADDRESS CATEGORY GUIDANCE:
 When saving new addresses follow these rules:
 - address_category MUST come directly from the user's words.
 - NEVER reinterpret, normalize, or change the category.
@@ -879,18 +516,21 @@ Process user input by:
 6. Using AI reasoning to collect missing information progressively
 7. When ALL required fields are complete, ask for user to confirm all the journey details first and then call search_volunteers_and_save_journey_details tool
 8. After calling search_volunteers_and_save_journey_details, present available volunteers to user for selection
-9. After user selects volunteer, extract the volunteer's scheduleId and searchId on your own from the selected volunteer data and call send_journey_request_to_volunteer tool.
-10. When replying user with date, you need to be aware the date is in DD-MM-YYYY (Day-Month-Year) format, you need to answer it in a user friendly format.
-11. If user wants to know the route, use get_tfl_route tool to get route information from TFL API
-12. The route feature is only for providing travel directions to the user, don't mix it with the volunteer booking process.
-13. If user asks for travel directions or route (e.g., “how do I reach?”, “give me route”, “what is the path?”), dont ask if they want to book a journey with those routes, just provide the route information.
+9. After user selects volunteer, immediately extract the volunteer's scheduleId and searchId on your own from the selected volunteer data and call send_journey_request_to_volunteer tool to send the journey request.
+10. Do not ask user to give scheduleId or searchId - extract these on your own from the selected volunteer data.
+9. When replying user with date, you need to be aware the date is in DD-MM-YYYY (Day-Month-Year) format, you need to answer it in a user friendly format.
+10. If user wants to know the route, use get_tfl_route tool to get route information from TFL API
+11. The route feature is only for providing travel directions to the user, don't mix it with the volunteer booking process.
+12. If user asks for travel directions or route (e.g., “how do I reach?”, “give me route”, “what is the path?”), dont ask if they want to book a journey with those routes, just provide the route information.
 
 JOURNEY REASON EXTRACTION:
 When user mentions journey importance (flexible, important, urgent, etc.), ALWAYS use the extract_journey_reason tool to classify it properly.
 Examples: "flexible" → use extract_journey_reason tool → "Flexible"
 
-CRITICAL: When you have all required information (pickup_address_id, destination_address_id, journey_date, pickup_time, journey_reason, total_time_volunteer), you MUST call the search_volunteers_and_save_journey_details tool to complete the booking.
+CRITICAL: When you have all required information (pickup_address_id, destination_address_id, journey_date, pickup_time, journey_reason, total_time_volunteer), you MUST call the search_volunteers_and_save_journey_details tool .
 
+CRITICAL : After calling send_journey_request_to_volunteer tool always respond with:
+"Your journey request has been sent to <VOLUNTEER_NAME>. We’ll notify you once the volunteer accept the joureny request."
 IMPORTANT: Use AI reasoning and tools for ALL extraction and processing.
 
 Be helpful, use tools, ask for missing info one at a time."""
@@ -925,22 +565,22 @@ IMPORTANT:
 6. If user mentions journey importance (flexible, important, urgent), use extract_journey_reason tool
 7. For addresses: Use get_saved_addresses to get addresses with IDs and address lines, then use AI reasoning to match user input and extract both the correct address ID AND address line. CRITICAL: The API returns JSON format [{{"addressId":502,"addressType":"Home","addressLine1":"n",...}}] - extract the exact "addressId" value from the JSON object, do not make up IDs
 8. Always ask about journey notes - if user hasn't provided any notes, ask if they want to add any comments or special instructions
-9. If ALL required fields are complete, verify all the journey details with the user and ask for confirmation before calling search_volunteers_and_save_journey_details tool
+9. If ALL required fields are complete, verify all the journey details with the user and ask for confirmation.
 10. When user confirms (says "yes", "looks good", "thanks", etc.), immediately call search_volunteers_and_save_journey_details tool.
 11. If no volunteers found then inform user politely and tell them that your journey is sent to our customer support team for further assistance.
 12. Let the user to select from available volunteers after calling search_volunteers_and_save_journey_details tool
-13. After the user selects volunteer, extract the volunteer's scheduleId and searchId from the selected volunteer data and call send_journey_request_to_volunteer tool.
+13. After the user selects volunteer, immediately extract the volunteer's scheduleId and searchId from the selected volunteer data and call send_journey_request_to_volunteer tool.
 14. Don't ask user to give scheduleId or searchId - extract these on your own from the selected volunteer data.
-15. Keep responses short - only show full journey details at final confirmation
-16. When replying user with date, you need to be aware the date is in DD-MM-YYYY (Day-Month-Year) format, you need to answer it in a user friendly format.
-17.If the user wants travel directions or route (e.g., “how do I reach?”, “give me route”, “what is the path?”), 
+13. Keep responses short - only show full journey details at final confirmation
+14. When replying user with date, you need to be aware the date is in DD-MM-YYYY (Day-Month-Year) format, you need to answer it in a user friendly format.
+15.If the user wants travel directions or route (e.g., “how do I reach?”, “give me route”, “what is the path?”), 
    → call get_tfl_route tool with origin as pickup_address_name and destination as destination_address_name to get route information from TFL API and present it to the user.
-18. The route feature is only for providing travel directions to the user, don't mix it with the volunteer booking process.   
-19. Only show full journey summary at the time of searching for volunteers.
-20. Don't repeate journey details on every step, prefer brief acknowledgements like "Got it", "Noted", "Thanks for the info", etc.
-21. If the user explicitly confirms starting a new journey, call reset_journey_session tool immediately.
-22. After reset, discard previous journey_data and begin fresh journey collection.
-23. Do NOT ask the VIP how long they are willing to wait for the volunteer. Always ask in terms of total journey duration.
+16. The route feature is only for providing travel directions to the user, don't mix it with the volunteer booking process.   
+17. Only show full journey summary at the time of searching for volunteers.
+18. Don't repeate journey details on every step, prefer brief acknowledgements like "Got it", "Noted", "Thanks for the info", etc.
+19. If the user explicitly confirms starting a new journey, call reset_journey_session tool immediately.
+20. After reset, discard previous journey_data and begin fresh journey collection.
+21. Do NOT ask the VIP how long they are willing to wait for the volunteer. Always ask in terms of total journey duration.
 
 
 RESET CHECK:
@@ -1239,39 +879,9 @@ Help the user with their booking status.
             "llm_available": self.llm is not None
         }
 
-    # Tool creation methods (simplified versions)
-    # def _create_get_addresses_tool(self):
-    #     """Create tool for getting saved addresses"""
-    #     @tool
-    #     def get_saved_addresses(user_id: int, auth_token: str, user_name: str) -> str:
-    #         """Get all saved addresses for a user from Travel Hands API"""
-    #         try:
-    #             session = JourneySession(
-    #                 user_id=user_id,
-    #                 user_name=user_name,
-    #                 auth_token=auth_token
-    #             )
 
-    #             result = get_existing_addresses(session,auth_token,user_id)
 
-    #             if result.get("success", False):
-    #                 addresses = result.get("addresses", [])
-    #                 if addresses:
-    #                     # Return raw JSON format for AI to parse addressId directly
-    #                     import json
-    #                     return f"📋 Your saved addresses (JSON format):\n{json.dumps(addresses, indent=2)}"
-    #                 else:
-    #                     return "📋 No saved addresses found."
-    #             else:
-    #                 return f"❌ Error retrieving addresses: {result.get('error', 'Unknown error')}"
-
-    #         except Exception as e:
-    #             logger.error(f"Error in get_saved_addresses tool: {str(e)}")
-    #             return f"Error retrieving addresses: {str(e)}"
-
-    #     return get_saved_addresses
-
-    # Tool creation methods (simplified versions)
+    # # Tool creation methods (simplified versions)
     def _create_get_addresses_tool(self):
         """Create tool for getting saved addresses"""
         @tool
@@ -1303,6 +913,9 @@ Help the user with their booking status.
 
         return get_saved_addresses
 
+    
+
+    
     def _create_save_address_tool(self):
         """Create tool for saving new addresses"""
         @tool
@@ -1336,6 +949,8 @@ Help the user with their booking status.
 
         return save_new_address
 
+
+    
     def _create_validate_address_tool(self):
         """Create tool for validating addresses"""
         @tool
@@ -1355,6 +970,10 @@ Help the user with their booking status.
                 return f"Error validating address: {str(e)}"
 
         return validate_address
+
+
+    
+
 
     def _create_extract_date_tool(self):
         """Create tool for extracting dates"""
@@ -1412,6 +1031,8 @@ Return ONLY the date in DD-MM-YYYY format, no additional text.
 
         return extract_date
 
+
+    
     def _create_validate_date_tool(self):
         """Create tool for validating dates"""
         @tool
@@ -1479,6 +1100,9 @@ Return ONLY the time in HH:MM:SS format, no additional text.
                 return f"Error extracting time: {str(e)}"
 
         return extract_time
+
+
+    
 
     def _create_validate_time_tool(self):
         """Create tool for validating times"""
@@ -1611,79 +1235,8 @@ Return ONLY the classified reason (Flexible, Important, or Very Important), no a
 
         return extract_journey_reason
 
+
    
-    # def _create_search_volunteers_tool(self):
-    #     """Create tool for searching volunteers"""
-    #     @tool
-    #     def search_volunteers_and_save_journey_details(
-    #         user_id: int,
-    #         auth_token: str,
-    #         user_name: str,
-    #         pickup_address_id: int,
-    #         destination_address_id: int,
-    #         pickup_address_name: str,
-    #         destination_address_name: str,
-    #         journey_date: str,
-    #         pickup_time: str,
-    #         journey_reason: str,
-    #         total_time_volunteer: str,
-    #         journey_notes: str = ""
-    #     ) -> dict:
-    #         """
-    #         Search for volunteers and return the list of volunteers.
-    #         Also save journey details if required.
-    #         """
-    #         try:
-    #             session = JourneySession(
-    #                 user_id=user_id,
-    #                 user_name=user_name,
-    #                 auth_token=auth_token
-    #             )
-
-    #             journey_data = {
-    #                 "pickup_address_id": pickup_address_id,
-    #                 "dest_address_id": destination_address_id,
-    #                 "pickup_address_type": pickup_address_name,
-    #                 "dest_address_type": destination_address_name,
-    #                 "journey_date": journey_date,
-    #                 "pickup_time": pickup_time,
-    #                 "journey_reason": journey_reason,
-    #                 "total_time_volunteer": total_time_volunteer,
-    #                 "journey_notes": journey_notes
-    #             }
-
-    #             # Call the volunteer search API
-    #             result = search_volunteers_api(session, journey_data)
-
-    #             if result.get("success", False):
-    #                 journey_data["available_volunteers"] = result.get("volunteers", [])
-    #                 logger.info(f"💡 Saved {len(journey_data['available_volunteers'])} volunteers in journey_data")
-
-    #                 return {
-    #                     "success": True,
-    #                     "message": result.get("message", ""),
-    #                     "volunteers": result.get("volunteers", []),
-    #                     "raw_response": result.get("response", {})
-    #                 }
-    #             else:
-    #                 return {
-    #                     "success": False,
-    #                     "message": result.get("message", "Error searching for volunteers"),
-    #                     "error": result.get("error", None),
-    #                     "volunteers": []
-    #                 }
-
-    #         except Exception as e:
-    #             logger.error(f"Error in search_volunteers_and_save_journey_details tool: {str(e)}")
-    #             return {
-    #                 "success": False,
-    #                 "message": f"Unexpected error: {str(e)}",
-    #                 "volunteers": []
-    #             }
-
-    #     return search_volunteers_and_save_journey_details
-
-
     def _create_search_volunteers_tool(self):
         """Create tool for searching volunteers"""
         @tool
@@ -1756,42 +1309,6 @@ Return ONLY the classified reason (Flexible, Important, or Very Important), no a
         return search_volunteers_and_save_journey_details
 
 
-    # def _create_send_journey_request_to_volunteer_tool(self):
-    #     """Create tool for confirming selected volunteer and sending journey request"""
-
-    #     @tool
-    #     def send_journey_request_to_volunteer(
-    #         user_id: int,
-    #         auth_token: str,
-    #         user_name:str,
-    #         journey_data: dict,
-    #         selected_volunteer: dict
-    #     ) -> dict:
-    #         """
-    #         Sends a journey request to the selected volunteer. This does NOT mean the volunteer has accepted.
-    #         """
-    #         try:
-
-    #             session = JourneySession(
-    #                 user_id=user_id,
-    #                 user_name=user_name,
-    #                 auth_token=auth_token
-    #             )
-                  
-    #             # Validation moved to a small helper (cleaner logic)
-    #             validation = validate_confirm_volunteer_input(journey_data, selected_volunteer)
-
-    #             if not validation["valid"]:
-    #                 return {"success": False, "message": validation["error"]}
-
-    #             # 🚀 Now call the real handler method
-    #             return handle_send_journey_request_to_volunteer(session, journey_data, selected_volunteer)
-
-    #         except Exception as e:
-    #             logger.error(f"❌ Error in send_journey_request_to_volunteer tool: {str(e)}", exc_info=True)
-    #             return {"success": False, "message": f"Internal error: {str(e)}"}
-
-    #     return send_journey_request_to_volunteer
 
     def _create_send_journey_request_to_volunteer_tool(self):
         """Create tool for confirming selected volunteer and sending journey request"""
@@ -1827,6 +1344,8 @@ Return ONLY the classified reason (Flexible, Important, or Very Important), no a
                 return {"success": False, "message": f"Internal error: {str(e)}"}
 
         return send_journey_request_to_volunteer
+    
+
     
     def _create_validate_journey_tool(self):
         """Create tool for validating journey data"""
@@ -2050,61 +1569,5 @@ Return ONLY the classified reason (Flexible, Important, or Very Important), no a
         return reset_journey_session
 
 
-    # def _send_journey_request_to_volunteer_directly(self, state, selected_volunteer):
-    #     user_context = state["user_context"]
 
-    #     tool_input = {
-    #         "user_id": user_context["user_id"],
-    #         "auth_token": user_context["auth_token"],
-    #         "journey_data": state["journey_data"],
-    #         "selected_volunteer": {
-    #             "scheduleId": selected_volunteer["schedule"]["id"],
-    #             "searchId": selected_volunteer["searchId"]
-    #         }
-    #     }
 
-    #     result = self.tools["booking"]["send_journey_request_to_volunteer"](
-    #         **tool_input
-    #     )
-
-    #     success_message = (
-    #         f"Your journey has been sent to {selected_volunteer['volunteerName']}. "
-    #         "Once they accept, I’ll let you know.Have a safe journey."
-    #     )
-
-    #     return self._update_state(state, {
-    #         "messages": state["messages"] + [{
-    #             "role": "assistant",
-    #             "content": success_message
-    #         }],
-    #         "journey_data": {},  # clear journey after confirmation
-    #         "current_agent": "supervising_chatbot"
-    #     })
-    # def _send_journey_request_to_volunteer_directly(self, state, selected_volunteer):
-    #     user_context = state["user_context"]
-
-    #     tool_input = {
-    #         "user_id": user_context["user_id"],
-    #         "auth_token": user_context["auth_token"],
-    #         "journey_data": state["journey_data"],
-    #         "selected_volunteer": {
-    #             "scheduleId": selected_volunteer["schedule"]["id"],
-    #             "searchId": selected_volunteer["searchId"]
-    #         }
-    #     }
-
-    #     result = self.tools["booking"]["send_journey_request_to_volunteer"](tool_input)
-
-    #     success_message = (
-    #         f"Your journey has been sent to {selected_volunteer['volunteerName']}. "
-    #         "Once they accept, I’ll let you know.Have a safe journey."
-    #     )
-
-    #     return self._update_state(state, {
-    #         "messages": state["messages"] + [{
-    #             "role": "assistant",
-    #             "content": success_message
-    #         }],
-    #         "journey_data": {},  # clear journey after confirmation
-    #         "current_agent": "supervising_chatbot"
-    #     })
