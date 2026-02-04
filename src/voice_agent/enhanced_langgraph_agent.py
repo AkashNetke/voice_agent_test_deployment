@@ -10,7 +10,6 @@ import logging
 from typing import Dict, Any, List, Optional, TypedDict
 from datetime import datetime
 
-from langchain_aws import ChatBedrock
 import requests
 
 from langgraph.prebuilt import create_react_agent
