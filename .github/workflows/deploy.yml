@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 env:
-  AWS_REGION: ap-south-1
+  AWS_REGION: eu-east-1
   ECR_REPOSITORY: voice-agent
 
 jobs:
