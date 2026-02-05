@@ -1,4 +1,4 @@
-name: Deploy to Test
+name: Deploy to AWS App Runner (Test)
 
 on:
   push:
@@ -6,18 +6,8 @@ on:
   workflow_dispatch:
 
 env:
-  # Azure Container Registry name (replace with your ACR name)
-  REGISTRY_NAME: travelhands-ecaweffuhmhcgyh5
-  # Registry URL
-  REGISTRY_URL: travelhands-ecaweffuhmhcgyh5.azurecr.io
-  # Azure Container Apps name (replace with your container app name)
-  CONTAINER_APP_NAME: voice-agent-test
-  # Container App ENV
-  CONTAINER_APP_ENV: managedEnvironment-thvoiceagent-8a5e
-  # Azure Resource Group name
-  RESOURCE_GROUP: th-voice-agent
-  # Container image name
-  IMAGE_NAME: voice-agent
+  AWS_REGION: ap-south-1
+  ECR_REPOSITORY: voice-agent
 
 jobs:
   build-and-deploy:
@@ -27,121 +17,52 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Validate environment variables
+    # -----------------------------
+    # Validate required secrets
+    # -----------------------------
+    - name: Validate AWS secrets
       run: |
-        echo "Validating required secrets..."
+        if [ -z "${{ secrets.AWS_ACCESS_KEY_ID }}" ]; then
+          echo "::error::AWS_ACCESS_KEY_ID missing"; exit 1; fi
+        if [ -z "${{ secrets.AWS_SECRET_ACCESS_KEY }}" ]; then
+          echo "::error::AWS_SECRET_ACCESS_KEY missing"; exit 1; fi
+        if [ -z "${{ secrets.AWS_ACCOUNT_ID }}" ]; then
+          echo "::error::AWS_ACCOUNT_ID missing"; exit 1; fi
 
-        if [ -z "${{ secrets.AZURE_CREDENTIALS }}" ]; then
-          echo "::error::Required secret AZURE_CREDENTIALS is not set"
-          exit 1
-        fi
+        echo "AWS secrets validated"
 
-        if [ -z "${{ secrets.AZURE_OPENAI_ENDPOINT }}" ]; then
-          echo "::error::Required secret AZURE_OPENAI_ENDPOINT is not set"
-          exit 1
-        fi
-
-        if [ -z "${{ secrets.AZURE_OPENAI_API_KEY }}" ]; then
-          echo "::error::Required secret AZURE_OPENAI_API_KEY is not set"
-          exit 1
-        fi
-
-        if [ -z "${{ secrets.AZURE_SPEECH_REGION }}" ]; then
-          echo "::error::Required secret AZURE_SPEECH_REGION is not set"
-          exit 1
-        fi
-
-        if [ -z "${{ secrets.AZURE_SPEECH_KEY }}" ]; then
-          echo "::error::Required secret AZURE_SPEECH_KEY is not set"
-          exit 1
-        fi
-
-        if [ -z "${{ secrets.AZURE_OPENAI_API_VERSION }}" ]; then
-          echo "::error::Required secret AZURE_OPENAI_API_VERSION is not set"
-          exit 1
-        fi
-
-        if [ -z "${{ secrets.AZURE_OPENAI_DEPLOYMENT_NAME }}" ]; then
-          echo "::error::Required secret AZURE_OPENAI_DEPLOYMENT_NAME is not set"
-          exit 1
-        fi
-
-        if [ -z "${{ secrets.COSMOS_DB_DATABASE }}" ]; then
-          echo "::error::Required secret COSMOS_DB_DATABASE is not set"
-          exit 1
-        fi
-
-        if [ -z "${{ secrets.COSMOS_DB_ENDPOINT }}" ]; then
-          echo "::error::Required secret COSMOS_DB_ENDPOINT is not set"
-          exit 1
-        fi
-
-        if [ -z "${{ secrets.COSMOS_DB_KEY }}" ]; then
-          echo "::error::Required secret COSMOS_DB_KEY is not set"
-          exit 1
-        fi
-
-        if [ -z "${{ secrets.COSMOS_CHAT_MESSAGE_CONTAINER }}" ]; then
-          echo "::error::Required secret COSMOS_CHAT_MESSAGE_CONTAINER is not set"
-          exit 1
-        fi
-
-        if [ -z "${{ secrets.LOG_LEVEL }}" ]; then
-          echo "::error::Required secret LOG_LEVEL is not set"
-          exit 1
-        fi
-
-        if [ -z "${{ secrets.TRAVEL_HANDS_API_BASE_URL }}" ]; then
-          echo "::error::Required secret TRAVEL_HANDS_API_BASE_URL is not set"
-          exit 1
-        fi
-
-        echo "All required secrets are set"
-
-    - name: Log in to Azure
-      uses: azure/login@v2
+    # -----------------------------
+    # Configure AWS credentials
+    # -----------------------------
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
       with:
-        creds: ${{ secrets.AZURE_CREDENTIALS }}
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
 
-    - name: Log in to Azure Container Registry
-      uses: azure/docker-login@v1
-      with:
-        login-server: ${{ env.REGISTRY_URL }}
-        username: ${{ secrets.REGISTRY_USERNAME }}
-        password: ${{ secrets.REGISTRY_PASSWORD }}
+    # -----------------------------
+    # Login to Amazon ECR
+    # -----------------------------
+    - name: Login to Amazon ECR
+      uses: aws-actions/amazon-ecr-login@v2
 
-    - name: Build and push Docker image
+    # -----------------------------
+    # Build Docker image
+    # -----------------------------
+    - name: Build Docker image
       run: |
-        # Build the Docker image
-        docker build -t ${{ env.REGISTRY_URL }}/${{ env.IMAGE_NAME }}:${{ github.sha }} .
+        docker build -t $ECR_REPOSITORY:${{ github.sha }} .
+        docker tag $ECR_REPOSITORY:${{ github.sha }} \
+          ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/$ECR_REPOSITORY:${{ github.sha }}
 
-        # Tag the image with "latest"
-        docker tag ${{ env.REGISTRY_URL }}/${{ env.IMAGE_NAME }}:${{ github.sha }} ${{ env.REGISTRY_URL }}/${{ env.IMAGE_NAME }}:latest
+        docker tag $ECR_REPOSITORY:${{ github.sha }} \
+          ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/$ECR_REPOSITORY:latest
 
-        # Push image to ACR
-        docker push ${{ env.REGISTRY_URL }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-
-        # Push the tag to ACR
-        docker push ${{ env.REGISTRY_URL }}/${{ env.IMAGE_NAME }}:latest
-
-    - name: Deploy to Azure Container Apps
+    # -----------------------------
+    # Push image to ECR
+    # -----------------------------
+    - name: Push to Amazon ECR
       run: |
-        SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-8)
-
-        az containerapp update \
-          --name ${{ env.CONTAINER_APP_NAME }} \
-          --resource-group ${{ env.RESOURCE_GROUP }} \
-          --image ${{ env.REGISTRY_URL }}/${{ env.IMAGE_NAME }}:latest \
-          --revision-suffix $SHORT_SHA \
-          --replace-env-vars "AZURE_OPENAI_ENDPOINT=${{ secrets.AZURE_OPENAI_ENDPOINT }}" \
-            "AZURE_SPEECH_REGION=${{ secrets.AZURE_SPEECH_REGION }}" \
-            "AZURE_SPEECH_KEY=${{ secrets.AZURE_SPEECH_KEY }}" \
-            "AZURE_OPENAI_API_KEY=${{ secrets.AZURE_OPENAI_API_KEY }}" \
-            "AZURE_OPENAI_API_VERSION=${{ secrets.AZURE_OPENAI_API_VERSION }}" \
-            "AZURE_OPENAI_DEPLOYMENT_NAME=${{ secrets.AZURE_OPENAI_DEPLOYMENT_NAME }}" \
-            "COSMOS_DB_DATABASE=${{ secrets.COSMOS_DB_DATABASE }}" \
-            "COSMOS_DB_ENDPOINT=${{ secrets.COSMOS_DB_ENDPOINT }}" \
-            "COSMOS_DB_KEY=${{ secrets.COSMOS_DB_KEY }}" \
-            "COSMOS_CHAT_MESSAGE_CONTAINER=${{ secrets.COSMOS_CHAT_MESSAGE_CONTAINER }}" \
-            "LOG_LEVEL=${{ secrets.LOG_LEVEL }}" \
-            "TRAVEL_HANDS_API_BASE_URL=${{ secrets.TRAVEL_HANDS_API_BASE_URL }}"
+        docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/$ECR_REPOSITORY:${{ github.sha }}
+        docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/$ECR_REPOSITORY:latest
