@@ -86,7 +86,7 @@ app_state = AppState(audio_processor=None,dynamodb_client=None)
 def root():
     """Root endpoint - health check"""
     return {
-        "message": "Voice Agent API is running",
+        "message": "Voice Agent API is running, deployment successfull",
     }
 
 @app.get("/health")
