@@ -3,7 +3,7 @@ from enum import Enum
 from typing import Optional
 from pydantic import BaseModel
 
-from database.cosmos_client import CosmosDBClient
+from database.dynamodb_client import DynamoDBClient
 from voice_agent.audio_utils import AudioProcessor
 from voice_agent.enhanced_langgraph_agent import EnhancedLangGraphBookingAgent
 
@@ -31,4 +31,5 @@ class Response(BaseModel):
 class AppState:
     audio_processor: Optional[AudioProcessor]
     enhanced_langgraph_agent: Optional[EnhancedLangGraphBookingAgent] = None
-    cosmos_client: Optional[CosmosDBClient] = None
+    # cosmos_client: Optional[CosmosDBClient] = None
+    dynamodb_client: Optional['DynamoDBClient'] = None

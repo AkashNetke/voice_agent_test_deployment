@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 
 # Import our components
-from database.cosmos_client import get_cosmos_client
+from database.dynamodb_client import get_dynamodb_client
 from voice_agent.model import AppState, Request, Response, MessageType
 from voice_agent.session_manager import session_manager
 from voice_agent.enhanced_langgraph_agent import EnhancedLangGraphBookingAgent
@@ -26,6 +26,8 @@ import logging
 import os
 log_level = os.getenv("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(level=getattr(logging, log_level))
+
+
 
 # Configure logging
 logging.basicConfig(
@@ -48,7 +50,8 @@ async def lifespan(app: FastAPI):
     # Try to initialize audio processor (includes speech services), but continue if it fails
     try:
         app_state.audio_processor = get_audio_processor(debug_mode=False)
-        app_state.cosmos_client = get_cosmos_client()
+        # app_state.cosmos_client = get_cosmos_client()
+        app_state.dynamodb_client = get_dynamodb_client()
         logger.info("✅ Audio processor and speech services initialized successfully")
     except Exception as e:
         logger.warning(f"⚠️  Audio processor initialization failed: {str(e)}")
@@ -76,8 +79,9 @@ app = FastAPI(
 )
 
 # Application Dependencies
-app_state = AppState(audio_processor=None, cosmos_client=None)
-
+# app_state = AppState(audio_processor=None, cosmos_client=None)
+app_state = AppState(audio_processor=None,dynamodb_client=None)
+    
 @app.get("/")
 def root():
     """Root endpoint - health check"""
@@ -287,7 +291,9 @@ def delete_user_chat_history(payload: dict = Body(...)):
         )
 
     try:
-        app_state.cosmos_client.delete_user_messages(user_id)
+        # app_state.cosmos_client.delete_user_messages(user_id)
+        app_state.dynamodb_client.delete_user_messages(user_id)
+
         return {"message": f"deleted for user_id: {user_id}"}
     except Exception as e:
         raise HTTPException(

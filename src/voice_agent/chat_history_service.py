@@ -1,7 +1,8 @@
 import logging
 from typing import List, Dict
 from datetime import datetime, timezone
-from database.cosmos_client import get_cosmos_client
+from database.dynamodb_client import get_dynamodb_client
+from database.dynamodb_client import get_dynamodb_client
 from database.models import ChatMessage
 
 logger = logging.getLogger(__name__)
@@ -10,13 +11,13 @@ class ChatHistoryService:
     """Service for managing chat history without sessions."""
     
     def __init__(self):
-        self.cosmos_client = get_cosmos_client()
-    
+        # self.dynamodb_client = get_dynamodb_client()
+        self.dynamodb_client = get_dynamodb_client()    
     def add_user_message(self, user_id: str, content: str) -> ChatMessage:
         """Add a user message to chat history."""
         try:
             message = ChatMessage.create_user_message(user_id, content)
-            if self.cosmos_client.save_message(message):
+            if self.dynamodb_client.save_message(message):
                 logger.info(f"User message saved for user {user_id}")
                 return message
             else:
@@ -29,7 +30,7 @@ class ChatHistoryService:
         """Add an assistant message to chat history."""
         try:
             message = ChatMessage.create_assistant_message(user_id, content)
-            if self.cosmos_client.save_message(message):
+            if self.dynamodb_client.save_message(message):
                 logger.info(f"Assistant message saved for user {user_id}")
                 return message
             else:
@@ -41,7 +42,7 @@ class ChatHistoryService:
     def get_user_chat_history(self, user_id: str, limit: int = 100) -> List[ChatMessage]:
         """Get chat history for a specific user."""
         try:
-            messages = self.cosmos_client.get_user_messages(user_id, limit)
+            messages = self.dynamodb_client.get_user_messages(user_id, limit)
             logger.info(f"Retrieved {len(messages)} messages for user {user_id}")
             return messages
         except Exception as e:
@@ -83,7 +84,7 @@ class ChatHistoryService:
                     timestamp=datetime.now(timezone.utc)
                 )
                 
-                if self.cosmos_client.save_message(message):
+                if self.dynamodb_client.save_message(message):
                     saved_count += 1
             
             logger.info(f"Batch saved {saved_count}/{len(messages)} messages for user {user_id}")
@@ -96,7 +97,7 @@ class ChatHistoryService:
     def delete_user_history(self, user_id: str) -> bool:
         """Delete all chat history for a user."""
         try:
-            success = self.cosmos_client.delete_user_messages(user_id)
+            success = self.dynamodb_client.delete_user_messages(user_id)
             if success:
                 logger.info(f"Deleted all chat history for user {user_id}")
             return success

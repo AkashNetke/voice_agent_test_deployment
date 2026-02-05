@@ -6,11 +6,19 @@ Handles Base64 audio conversion and Azure Speech Services integration.
 import os
 import base64
 import tempfile
+import time
+import uuid
 import requests
 import json
 import subprocess
+import asyncio
+import wave
 from typing import Optional, Dict
 import azure.cognitiveservices.speech as speechsdk
+import boto3
+from typing import AsyncGenerator
+
+
 import logging
 
 logger = logging.getLogger(__name__)
@@ -127,321 +135,486 @@ class AudioFormatAnalyzer:
                         logger.warning(f"⚠️ Failed to clean up {temp_file}: {e}")
 
 
+# class AudioProcessor:
+#     """
+#     Audio processing utilities using Azure Speech Services REST API.
+#     Uses the REST API for speech-to-text (more reliable) and Speech SDK for text-to-speech.
+#     """
+
+#     def __init__(self, debug_mode: bool = False):
+#         self.debug_mode = debug_mode
+#         self.debug_dir = tempfile.mkdtemp(prefix="voice_agent_debug_")
+
+#         # Get Azure Speech configuration
+#         self.speech_key = os.getenv('AZURE_SPEECH_KEY')
+#         self.speech_region = os.getenv('AZURE_SPEECH_REGION')
+
+#         if not self.speech_key or not self.speech_region:
+#             raise ValueError("Azure Speech Service key and region must be configured")
+
+#         # Initialize Azure Speech SDK configuration for TTS
+#         logger.info(f"🔑 Initializing Azure Speech Services...")
+#         logger.info(f"🌍 Region: {self.speech_region}")
+#         logger.info(f"🔐 API Key: {'***' + (self.speech_key[-4:] if self.speech_key else 'None')}")
+
+#         self.speech_config = speechsdk.SpeechConfig(
+#             subscription=self.speech_key,
+#             region=self.speech_region
+#         )
+#         self.speech_config.speech_recognition_language = "en-US"
+#         self.speech_config.set_speech_synthesis_output_format(
+#             speechsdk.SpeechSynthesisOutputFormat.Audio16Khz32KBitRateMonoMp3
+#         )
+
+#         # REST API endpoint for speech-to-text (Microsoft's recommended approach)
+#         self.stt_endpoint = f"https://{self.speech_region}.stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1"
+
+#         logger.info(f"✅ Azure Speech Services initialized successfully")
+#         logger.info(f"🔍 AudioProcessor initialized with debug mode {'enabled' if self.debug_mode else 'disabled'}")
+#         if self.debug_mode:
+#             logger.info(f"🔍 Debug files will be saved to: {self.debug_dir}")
+#         logger.info(f"🔍 Using Azure REST API endpoint: {self.stt_endpoint}")
+
+#     def speech_to_text_from_base64(self, base64_audio_data: str) -> str:
+#         """
+#         Convert Base64-encoded audio to text using Azure Speech-to-Text REST API.
+#         This approach follows Microsoft's recommendations for better compatibility.
+#         Now includes automatic format detection and conversion.
+#         """
+#         if not base64_audio_data or not base64_audio_data.strip():
+#             logger.debug("🔇 Empty audio data - treating as silence")
+#             return ""  # Return empty string for silence, not error message
+
+#         try:
+#             logger.debug(f"🎤 Starting speech-to-text conversion from Base64 audio")
+#             logger.debug(f"🔍 Base64 audio length: {len(base64_audio_data)} characters")
+
+#             # Decode Base64 audio data
+#             try:
+#                 decoded_audio_data = base64.b64decode(base64_audio_data)
+#                 logger.debug(f"🔍 Decoded audio data size: {len(decoded_audio_data)} bytes")
+#             except Exception as e:
+#                 logger.error(f"❌ Failed to decode Base64 audio: {str(e)}")
+#                 return ""  # Return empty string for invalid audio
+
+#             # Check for very small audio files (likely silence)
+#             if len(decoded_audio_data) < 1000:  # Less than 1KB is likely just noise
+#                 logger.debug("🔇 Audio data too small - likely silence or noise")
+#                 return ""  # Return empty string for tiny audio
+
+#             # Analyze audio format and convert if needed
+#             analyzer = AudioFormatAnalyzer()
+#             format_info = analyzer.analyze_audio_header(decoded_audio_data)
+
+#             logger.debug(f"🔍 Detected audio format: {format_info['detected_format']}")
+
+#             # Convert to WAV if not already in WAV format
+#             if not format_info.get('is_valid_wav', False):
+#                 logger.info("🔄 Converting audio to WAV format for Azure compatibility...")
+#                 converted_data = analyzer.convert_to_wav_ffmpeg(decoded_audio_data)
+#                 if converted_data:
+#                     decoded_audio_data = converted_data
+#                     logger.debug("✅ Audio converted to WAV successfully")
+
+#                     # Verify conversion
+#                     verify_info = analyzer.analyze_audio_header(decoded_audio_data)
+#                     logger.debug(f"🔍 Post-conversion format: {verify_info['detected_format']}")
+#                 else:
+#                     logger.error("❌ Audio conversion failed")
+#                     return ""
+#             else:
+#                 logger.info("✅ Audio is already in WAV format")
+
+#             # Create temporary file for debugging
+#             temp_filename = None
+#             try:
+#                 # save a file if it is running in debug mode
+#                 if self.debug_mode:
+#                     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_file:
+#                         temp_file.write(decoded_audio_data)
+#                         temp_filename = temp_file.name
+
+#                     logger.info(f"🔍 Created temporary audio file: {temp_filename} ({len(decoded_audio_data)} bytes)")
+
+#                 # Check final WAV file format
+#                 if len(decoded_audio_data) >= 16:
+#                     header = decoded_audio_data[:16]
+#                     logger.debug(f"🔍 Final decoded audio data size: {len(decoded_audio_data)} bytes")
+#                     logger.debug(f"🔍 Final audio header (first 16 bytes): {header}")
+#                     logger.debug(f"🔍 Final header as hex: {header.hex()}")
+
+#                     if header.startswith(b'RIFF') and b'WAVE' in header:
+#                         logger.debug("✅ Final audio file is a valid WAV file")
+#                     else:
+#                         logger.debug("⚠️ Final audio file may still not be a valid WAV format")
+
+#                 # Use Azure Speech-to-Text REST API
+#                 return self._perform_azure_rest_stt(decoded_audio_data)
+
+#             finally:
+#                 # Clean up temporary file created in debug mode
+#                 if temp_filename and os.path.exists(temp_filename):
+#                     os.unlink(temp_filename)
+#                     logger.info(f"🧹 Cleaned up temporary file: {temp_filename}")
+
+#         except Exception as e:
+#             logger.error(f"❌ Speech to text conversion failed: {str(e)}")
+#             return ""  # Return empty string instead of throwing exception
+
+#     def _perform_azure_rest_stt(self, audio_data: bytes) -> str:
+#         """
+#         Perform speech recognition using Azure Speech-to-Text REST API.
+#         This follows Microsoft's recommended approach for short audio files.
+#         """
+#         try:
+#             logger.debug("🌐 Using Azure Speech-to-Text REST API...")
+
+#             # Prepare headers according to Microsoft documentation
+#             headers = {
+#                 'Ocp-Apim-Subscription-Key': self.speech_key,
+#                 'Content-Type': 'audio/wav; codecs=audio/pcm; samplerate=16000',
+#                 'Accept': 'application/json'
+#             }
+
+#             # Query parameters according to Microsoft documentation
+#             params = {
+#                 'language': 'en-US',
+#                 'format': 'detailed',
+#                 'profanity': 'masked'
+#             }
+
+#             logger.debug(f"🔍 Making REST API request to: {self.stt_endpoint}")
+#             logger.debug(f"🔍 Audio data size: {len(audio_data)} bytes")
+
+#             # Make the REST API call
+#             response = requests.post(
+#                 self.stt_endpoint,
+#                 headers=headers,
+#                 params=params,
+#                 data=audio_data,
+#                 timeout=30
+#             )
+
+#             logger.debug(f"🔍 Azure API response status: {response.status_code}")
+
+#             if response.status_code == 200:
+#                 result = response.json()
+#                 logger.debug(f"🔍 Azure API response: {json.dumps(result, indent=2)}")
+
+#                 # Parse response according to Microsoft documentation
+#                 recognition_status = result.get('RecognitionStatus')
+
+#                 if recognition_status == 'Success':
+#                     recognized_text = result.get('DisplayText', '').strip()
+#                     if recognized_text:
+#                         logger.info(f"✅ Speech successfully recognized: '{recognized_text}'")
+#                         return recognized_text
+#                     else:
+#                         logger.info("🔇 Speech recognition succeeded but no text detected (silence)")
+#                         return ""  # Empty string for silence
+
+#                 elif recognition_status == 'InitialSilenceTimeout':
+#                     logger.info("🔇 Initial silence timeout - no speech detected")
+#                     return ""  # Empty string for silence
+
+#                 elif recognition_status == 'BabbleTimeout':
+#                     logger.info("🔇 Babble timeout - unclear audio detected")
+#                     return ""  # Empty string for unclear audio
+
+#                 elif recognition_status == 'NoMatch':
+#                     logger.info("🔇 No speech match found in audio")
+#                     return ""  # Empty string for no match
+
+#                 else:
+#                     logger.warning(f"⚠️ Unhandled recognition status: {recognition_status}")
+#                     return ""  # Empty string for other statuses
+
+#             elif response.status_code == 400:
+#                 logger.error(f"❌ Bad request (400): {response.text}")
+#                 return ""  # Empty string for bad request
+
+#             elif response.status_code == 401:
+#                 logger.error(f"❌ Unauthorized (401): Check Azure Speech Service credentials")
+#                 return ""  # Empty string for auth error
+
+#             else:
+#                 logger.error(f"❌ Azure API error {response.status_code}: {response.text}")
+#                 return ""  # Empty string for other errors
+
+#         except requests.exceptions.Timeout:
+#             logger.error("❌ Azure API request timeout")
+#             return ""  # Empty string for timeout
+
+#         except requests.exceptions.RequestException as e:
+#             logger.error(f"❌ Network error calling Azure API: {str(e)}")
+#             return ""  # Empty string for network error
+
+#         except Exception as e:
+#             logger.error(f"❌ Unexpected error in Azure REST API call: {str(e)}")
+#             return ""  # Empty string for unexpected error
+
+#     def text_to_speech_base64(self, text: str, message_type: str = "general") -> Optional[str]:
+#         """
+#         Convert text to speech and return as Base64-encoded audio using Azure Speech SDK.
+#         The Speech SDK works well for text-to-speech, so we keep using it for TTS.
+#         """
+#         if not text or not text.strip():
+#             logger.warning("⚠️ Empty text provided for TTS")
+#             return None
+
+#         temp_filename = None
+#         try:
+#             logger.debug(f"🔊 Starting text-to-speech conversion for: '{text[:50]}{'...' if len(text) > 50 else ''}'")
+#             logger.debug(f"🔍 Message type: {message_type}")
+
+#             # Create temporary file for audio output
+#             with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_file:
+#                 temp_filename = temp_file.name
+
+#             logger.debug(f"🔍 TTS output file: {temp_filename}")
+
+#             # Configure audio output to file using Speech SDK
+#             audio_config = speechsdk.audio.AudioOutputConfig(filename=temp_filename)
+
+#             # Create speech synthesizer
+#             speech_synthesizer = speechsdk.SpeechSynthesizer(
+#                 speech_config=self.speech_config,
+#                 audio_config=audio_config
+#             )
+
+#             logger.debug("🔄 Synthesizing text to speech...")
+
+#             # Synthesize speech
+#             ssml_text = f"""
+# <speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis"
+#     xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="en-US">
+#     <voice name="en-US-SerenaMultilingualNeural">
+#         <lang xml:lang="en-GB">
+#             <mstts:express-as style="empathetic">
+#                 <prosody rate="-10%" pitch="+5%" volume="+10%">
+#                     {text}
+#                 </prosody>
+#             </mstts:express-as>
+#         </lang>
+#     </voice>
+# </speak>
+# """
+#             result = speech_synthesizer.speak_ssml_async(ssml_text).get()
+
+#             # Check synthesis result
+#             if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
+#                 logger.debug("✅ Speech synthesis completed successfully")
+
+#                 # Read the generated audio file
+#                 logger.debug("🔄 Reading generated audio file...")
+#                 if os.path.exists(temp_filename) and os.path.getsize(temp_filename) > 0:
+#                     with open(temp_filename, 'rb') as audio_file:
+#                         audio_data = audio_file.read()
+#                         base64_audio = base64.b64encode(audio_data).decode('utf-8')
+
+#                     logger.debug(f"🔍 Encoded audio file to Base64: {temp_filename} ({len(audio_data)} bytes)")
+
+#                     # Save debug copy if enabled
+#                     if self.debug_mode:
+#                         debug_file = os.path.join(self.debug_dir, f"output_audio_{os.path.basename(temp_filename)}")
+#                         with open(debug_file, 'wb') as f:
+#                             f.write(audio_data)
+#                         logger.info(f"🔍 Debug: Saved TTS output to {debug_file}")
+
+#                     logger.info("✅ Text-to-speech synthesis completed successfully")
+#                     return base64_audio
+#                 else:
+#                     logger.error(f"❌ Generated audio file is empty or missing: {temp_filename}")
+#                     return None
+
+#             elif result.reason == speechsdk.ResultReason.Canceled:
+#                 cancellation_details = speechsdk.CancellationDetails(result)
+#                 logger.error(f"❌ Speech synthesis canceled: {cancellation_details.reason}")
+#                 if cancellation_details.reason == speechsdk.CancellationReason.Error:
+#                     logger.error(f"❌ Error details: {cancellation_details.error_details}")
+#                 return None
+#             else:
+#                 logger.error(f"❌ Speech synthesis failed: {result.reason}")
+#                 return None
+
+#         except Exception as e:
+#             logger.error(f"❌ Text-to-speech conversion failed: {str(e)}")
+#             return None
+
+#         finally:
+#             # Clean up temporary file
+#             if temp_filename and os.path.exists(temp_filename):
+#                 try:
+#                     os.unlink(temp_filename)
+#                     logger.info(f"🧹 Cleaned up TTS temporary file: {temp_filename}")
+#                 except Exception as e:
+#                     logger.warning(f"⚠️ Failed to clean up temporary file {temp_filename}: {str(e)}")
+
+
+
 class AudioProcessor:
     """
-    Audio processing utilities using Azure Speech Services REST API.
-    Uses the REST API for speech-to-text (more reliable) and Speech SDK for text-to-speech.
+    Audio processing using AWS Transcribe (batch) and Polly (TTS)
+    Fully compatible with Python 3.13
     """
 
-    def __init__(self, debug_mode: bool = False):
+    def __init__(self, region: str = "eu-north-1", s3_bucket: str = "voice-agent-1234", debug_mode: bool = False):
+        self.region = region
+        self.s3_bucket = s3_bucket
         self.debug_mode = debug_mode
-        self.debug_dir = tempfile.mkdtemp(prefix="voice_agent_debug_")
 
-        # Get Azure Speech configuration
-        self.speech_key = os.getenv('AZURE_SPEECH_KEY')
-        self.speech_region = os.getenv('AZURE_SPEECH_REGION')
+        # Initialize AWS clients
+        self.s3_client = boto3.client("s3", region_name=self.region)
+        self.transcribe_client = boto3.client("transcribe", region_name=self.region)
+        # self.polly_client = boto3.client("polly", region_name="us-east-1")
+        self.polly_client = boto3.client("polly", region_name=self.region)
 
-        if not self.speech_key or not self.speech_region:
-            raise ValueError("Azure Speech Service key and region must be configured")
+        logger.info(f"✅ AWS Transcribe client initialized in {self.region}")
+        logger.info(f"✅ AWS Polly client initialized in {self.region}")
+        logger.info(f"✅ S3 client initialized for bucket '{self.s3_bucket}'")
 
-        # Initialize Azure Speech SDK configuration for TTS
-        logger.info(f"🔑 Initializing Azure Speech Services...")
-        logger.info(f"🌍 Region: {self.speech_region}")
-        logger.info(f"🔐 API Key: {'***' + (self.speech_key[-4:] if self.speech_key else 'None')}")
+    # -----------------------------
+    # Audio Conversion & S3 Upload
+    # -----------------------------
+    def _convert_to_wav(self, audio_bytes: bytes) -> str:
+        """Convert arbitrary audio bytes (mp3/webm/wav) to PCM16 WAV for AWS Transcribe"""
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".input") as f:
+            f.write(audio_bytes)
+            input_path = f.name
 
-        self.speech_config = speechsdk.SpeechConfig(
-            subscription=self.speech_key,
-            region=self.speech_region
-        )
-        self.speech_config.speech_recognition_language = "en-US"
-        self.speech_config.set_speech_synthesis_output_format(
-            speechsdk.SpeechSynthesisOutputFormat.Audio16Khz32KBitRateMonoMp3
-        )
+        output_path = input_path + ".wav"
 
-        # REST API endpoint for speech-to-text (Microsoft's recommended approach)
-        self.stt_endpoint = f"https://{self.speech_region}.stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1"
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-i", input_path,
+            "-ac", "1",       # mono
+            "-ar", "16000",   # 16 kHz
+            "-f", "wav",
+            output_path
+        ]
+        subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
 
-        logger.info(f"✅ Azure Speech Services initialized successfully")
-        logger.info(f"🔍 AudioProcessor initialized with debug mode {'enabled' if self.debug_mode else 'disabled'}")
-        if self.debug_mode:
-            logger.info(f"🔍 Debug files will be saved to: {self.debug_dir}")
-        logger.info(f"🔍 Using Azure REST API endpoint: {self.stt_endpoint}")
+        os.remove(input_path)
+        return output_path
 
-    def speech_to_text_from_base64(self, base64_audio_data: str) -> str:
-        """
-        Convert Base64-encoded audio to text using Azure Speech-to-Text REST API.
-        This approach follows Microsoft's recommendations for better compatibility.
-        Now includes automatic format detection and conversion.
-        """
-        if not base64_audio_data or not base64_audio_data.strip():
-            logger.debug("🔇 Empty audio data - treating as silence")
-            return ""  # Return empty string for silence, not error message
+    def _upload_to_s3(self, file_path: str) -> str:
+        """Upload WAV file to S3 and return S3 URI"""
+        key = f"transcribe_inputs/{uuid.uuid4().hex}.wav"
+        self.s3_client.upload_file(file_path, self.s3_bucket, key)
+        return f"s3://{self.s3_bucket}/{key}"
 
-        try:
-            logger.debug(f"🎤 Starting speech-to-text conversion from Base64 audio")
-            logger.debug(f"🔍 Base64 audio length: {len(base64_audio_data)} characters")
+    # -----------------------------
+    # Transcription (Batch)
+    # -----------------------------
+    def _poll_transcription(self, job_name: str) -> Optional[str]:
+        """Poll AWS Transcribe until the job completes"""
+        while True:
+            status = self.transcribe_client.get_transcription_job(TranscriptionJobName=job_name)
+            job_status = status["TranscriptionJob"]["TranscriptionJobStatus"]
 
-            # Decode Base64 audio data
-            try:
-                decoded_audio_data = base64.b64decode(base64_audio_data)
-                logger.debug(f"🔍 Decoded audio data size: {len(decoded_audio_data)} bytes")
-            except Exception as e:
-                logger.error(f"❌ Failed to decode Base64 audio: {str(e)}")
-                return ""  # Return empty string for invalid audio
+            if job_status == "COMPLETED":
+                transcript_uri = status["TranscriptionJob"]["Transcript"]["TranscriptFileUri"]
 
-            # Check for very small audio files (likely silence)
-            if len(decoded_audio_data) < 1000:  # Less than 1KB is likely just noise
-                logger.debug("🔇 Audio data too small - likely silence or noise")
-                return ""  # Return empty string for tiny audio
-
-            # Analyze audio format and convert if needed
-            analyzer = AudioFormatAnalyzer()
-            format_info = analyzer.analyze_audio_header(decoded_audio_data)
-
-            logger.debug(f"🔍 Detected audio format: {format_info['detected_format']}")
-
-            # Convert to WAV if not already in WAV format
-            if not format_info.get('is_valid_wav', False):
-                logger.info("🔄 Converting audio to WAV format for Azure compatibility...")
-                converted_data = analyzer.convert_to_wav_ffmpeg(decoded_audio_data)
-                if converted_data:
-                    decoded_audio_data = converted_data
-                    logger.debug("✅ Audio converted to WAV successfully")
-
-                    # Verify conversion
-                    verify_info = analyzer.analyze_audio_header(decoded_audio_data)
-                    logger.debug(f"🔍 Post-conversion format: {verify_info['detected_format']}")
+                # Fetch transcript JSON from S3
+                if transcript_uri.startswith("https://"):
+                    import requests
+                    resp = requests.get(transcript_uri)
+                    transcript_json = resp.json()
                 else:
-                    logger.error("❌ Audio conversion failed")
-                    return ""
-            else:
-                logger.info("✅ Audio is already in WAV format")
+                    response = self.s3_client.get_object(
+                        Bucket=self.s3_bucket,
+                        Key=transcript_uri.split(f"s3://{self.s3_bucket}/")[1]
+                    )
+                    transcript_json = json.loads(response["Body"].read())
 
-            # Create temporary file for debugging
-            temp_filename = None
-            try:
-                # save a file if it is running in debug mode
-                if self.debug_mode:
-                    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_file:
-                        temp_file.write(decoded_audio_data)
-                        temp_filename = temp_file.name
+                return transcript_json["results"]["transcripts"][0]["transcript"]
 
-                    logger.info(f"🔍 Created temporary audio file: {temp_filename} ({len(decoded_audio_data)} bytes)")
+            elif job_status == "FAILED":
+                logger.error(f"❌ AWS Transcribe job {job_name} failed")
+                return None
 
-                # Check final WAV file format
-                if len(decoded_audio_data) >= 16:
-                    header = decoded_audio_data[:16]
-                    logger.debug(f"🔍 Final decoded audio data size: {len(decoded_audio_data)} bytes")
-                    logger.debug(f"🔍 Final audio header (first 16 bytes): {header}")
-                    logger.debug(f"🔍 Final header as hex: {header.hex()}")
+            time.sleep(2)
 
-                    if header.startswith(b'RIFF') and b'WAVE' in header:
-                        logger.debug("✅ Final audio file is a valid WAV file")
-                    else:
-                        logger.debug("⚠️ Final audio file may still not be a valid WAV format")
-
-                # Use Azure Speech-to-Text REST API
-                return self._perform_azure_rest_stt(decoded_audio_data)
-
-            finally:
-                # Clean up temporary file created in debug mode
-                if temp_filename and os.path.exists(temp_filename):
-                    os.unlink(temp_filename)
-                    logger.info(f"🧹 Cleaned up temporary file: {temp_filename}")
-
-        except Exception as e:
-            logger.error(f"❌ Speech to text conversion failed: {str(e)}")
-            return ""  # Return empty string instead of throwing exception
-
-    def _perform_azure_rest_stt(self, audio_data: bytes) -> str:
+    def speech_to_text_from_base64(self, base64_audio: str) -> str:
         """
-        Perform speech recognition using Azure Speech-to-Text REST API.
-        This follows Microsoft's recommended approach for short audio files.
+        Base64 audio (any format) → PCM16 WAV → Upload to S3 → AWS Transcribe → Text
         """
+        if not base64_audio:
+            return ""
+
         try:
-            logger.debug("🌐 Using Azure Speech-to-Text REST API...")
+            # Decode Base64
+            audio_bytes = base64.b64decode(base64_audio)
 
-            # Prepare headers according to Microsoft documentation
-            headers = {
-                'Ocp-Apim-Subscription-Key': self.speech_key,
-                'Content-Type': 'audio/wav; codecs=audio/pcm; samplerate=16000',
-                'Accept': 'application/json'
-            }
+            # Convert to WAV
+            wav_path = self._convert_to_wav(audio_bytes)
 
-            # Query parameters according to Microsoft documentation
-            params = {
-                'language': 'en-US',
-                'format': 'detailed',
-                'profanity': 'masked'
-            }
+            # Upload to S3
+            s3_uri = self._upload_to_s3(wav_path)
 
-            logger.debug(f"🔍 Making REST API request to: {self.stt_endpoint}")
-            logger.debug(f"🔍 Audio data size: {len(audio_data)} bytes")
-
-            # Make the REST API call
-            response = requests.post(
-                self.stt_endpoint,
-                headers=headers,
-                params=params,
-                data=audio_data,
-                timeout=30
+            # Start transcription job
+            job_name = f"transcribe_job_{uuid.uuid4().hex}"
+            self.transcribe_client.start_transcription_job(
+                TranscriptionJobName=job_name,
+                Media={"MediaFileUri": s3_uri},
+                MediaFormat="wav",
+                LanguageCode="en-US"
             )
 
-            logger.debug(f"🔍 Azure API response status: {response.status_code}")
+            # Poll for completion
+            transcript = self._poll_transcription(job_name)
 
-            if response.status_code == 200:
-                result = response.json()
-                logger.debug(f"🔍 Azure API response: {json.dumps(result, indent=2)}")
+            # Cleanup local WAV
+            os.remove(wav_path)
 
-                # Parse response according to Microsoft documentation
-                recognition_status = result.get('RecognitionStatus')
-
-                if recognition_status == 'Success':
-                    recognized_text = result.get('DisplayText', '').strip()
-                    if recognized_text:
-                        logger.info(f"✅ Speech successfully recognized: '{recognized_text}'")
-                        return recognized_text
-                    else:
-                        logger.info("🔇 Speech recognition succeeded but no text detected (silence)")
-                        return ""  # Empty string for silence
-
-                elif recognition_status == 'InitialSilenceTimeout':
-                    logger.info("🔇 Initial silence timeout - no speech detected")
-                    return ""  # Empty string for silence
-
-                elif recognition_status == 'BabbleTimeout':
-                    logger.info("🔇 Babble timeout - unclear audio detected")
-                    return ""  # Empty string for unclear audio
-
-                elif recognition_status == 'NoMatch':
-                    logger.info("🔇 No speech match found in audio")
-                    return ""  # Empty string for no match
-
-                else:
-                    logger.warning(f"⚠️ Unhandled recognition status: {recognition_status}")
-                    return ""  # Empty string for other statuses
-
-            elif response.status_code == 400:
-                logger.error(f"❌ Bad request (400): {response.text}")
-                return ""  # Empty string for bad request
-
-            elif response.status_code == 401:
-                logger.error(f"❌ Unauthorized (401): Check Azure Speech Service credentials")
-                return ""  # Empty string for auth error
-
-            else:
-                logger.error(f"❌ Azure API error {response.status_code}: {response.text}")
-                return ""  # Empty string for other errors
-
-        except requests.exceptions.Timeout:
-            logger.error("❌ Azure API request timeout")
-            return ""  # Empty string for timeout
-
-        except requests.exceptions.RequestException as e:
-            logger.error(f"❌ Network error calling Azure API: {str(e)}")
-            return ""  # Empty string for network error
+            return transcript or ""
 
         except Exception as e:
-            logger.error(f"❌ Unexpected error in Azure REST API call: {str(e)}")
-            return ""  # Empty string for unexpected error
+            logger.error(f"❌ Speech-to-text failed: {str(e)}")
+            return ""
 
-    def text_to_speech_base64(self, text: str, message_type: str = "general") -> Optional[str]:
+    # -----------------------------
+    # Text-to-Speech (Polly)
+    # -----------------------------
+    def text_to_speech_base64(self, text: str, voice: str = "Joanna") -> Optional[str]:
         """
-        Convert text to speech and return as Base64-encoded audio using Azure Speech SDK.
-        The Speech SDK works well for text-to-speech, so we keep using it for TTS.
+        Convert text to Base64-encoded audio using AWS Polly
         """
         if not text or not text.strip():
-            logger.warning("⚠️ Empty text provided for TTS")
             return None
 
-        temp_filename = None
         try:
-            logger.debug(f"🔊 Starting text-to-speech conversion for: '{text[:50]}{'...' if len(text) > 50 else ''}'")
-            logger.debug(f"🔍 Message type: {message_type}")
-
-            # Create temporary file for audio output
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_file:
-                temp_filename = temp_file.name
-
-            logger.debug(f"🔍 TTS output file: {temp_filename}")
-
-            # Configure audio output to file using Speech SDK
-            audio_config = speechsdk.audio.AudioOutputConfig(filename=temp_filename)
-
-            # Create speech synthesizer
-            speech_synthesizer = speechsdk.SpeechSynthesizer(
-                speech_config=self.speech_config,
-                audio_config=audio_config
+            response = self.polly_client.synthesize_speech(
+                Text=text,
+                OutputFormat="mp3",
+                VoiceId=voice
+                # Engine="neural"
             )
+            audio_stream = response.get("AudioStream")
+            if audio_stream:
+                audio_bytes = audio_stream.read()
+                base64_audio = base64.b64encode(audio_bytes).decode("utf-8")
 
-            logger.debug("🔄 Synthesizing text to speech...")
+                if self.debug_mode:
+                    debug_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3").name
+                    with open(debug_file, "wb") as f:
+                        f.write(audio_bytes)
+                    logger.info(f"🔍 Debug: Saved TTS output to {debug_file}")
 
-            # Synthesize speech
-            ssml_text = f"""
-<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis"
-    xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="en-US">
-    <voice name="en-US-SerenaMultilingualNeural">
-        <lang xml:lang="en-GB">
-            <mstts:express-as style="empathetic">
-                <prosody rate="-10%" pitch="+5%" volume="+10%">
-                    {text}
-                </prosody>
-            </mstts:express-as>
-        </lang>
-    </voice>
-</speak>
-"""
-            result = speech_synthesizer.speak_ssml_async(ssml_text).get()
-
-            # Check synthesis result
-            if result.reason == speechsdk.ResultReason.SynthesizingAudioCompleted:
-                logger.debug("✅ Speech synthesis completed successfully")
-
-                # Read the generated audio file
-                logger.debug("🔄 Reading generated audio file...")
-                if os.path.exists(temp_filename) and os.path.getsize(temp_filename) > 0:
-                    with open(temp_filename, 'rb') as audio_file:
-                        audio_data = audio_file.read()
-                        base64_audio = base64.b64encode(audio_data).decode('utf-8')
-
-                    logger.debug(f"🔍 Encoded audio file to Base64: {temp_filename} ({len(audio_data)} bytes)")
-
-                    # Save debug copy if enabled
-                    if self.debug_mode:
-                        debug_file = os.path.join(self.debug_dir, f"output_audio_{os.path.basename(temp_filename)}")
-                        with open(debug_file, 'wb') as f:
-                            f.write(audio_data)
-                        logger.info(f"🔍 Debug: Saved TTS output to {debug_file}")
-
-                    logger.info("✅ Text-to-speech synthesis completed successfully")
-                    return base64_audio
-                else:
-                    logger.error(f"❌ Generated audio file is empty or missing: {temp_filename}")
-                    return None
-
-            elif result.reason == speechsdk.ResultReason.Canceled:
-                cancellation_details = speechsdk.CancellationDetails(result)
-                logger.error(f"❌ Speech synthesis canceled: {cancellation_details.reason}")
-                if cancellation_details.reason == speechsdk.CancellationReason.Error:
-                    logger.error(f"❌ Error details: {cancellation_details.error_details}")
-                return None
+                return base64_audio
             else:
-                logger.error(f"❌ Speech synthesis failed: {result.reason}")
                 return None
 
         except Exception as e:
-            logger.error(f"❌ Text-to-speech conversion failed: {str(e)}")
+            logger.error(f"❌ TTS failed: {str(e)}")
             return None
 
-        finally:
-            # Clean up temporary file
-            if temp_filename and os.path.exists(temp_filename):
-                try:
-                    os.unlink(temp_filename)
-                    logger.info(f"🧹 Cleaned up TTS temporary file: {temp_filename}")
-                except Exception as e:
-                    logger.warning(f"⚠️ Failed to clean up temporary file {temp_filename}: {str(e)}")
 
-def get_audio_processor(debug_mode: bool = False) -> AudioProcessor:
-    """Factory function to create AudioProcessor instance"""
-    return AudioProcessor(debug_mode=debug_mode)
+s3_bucket_name = "voice-agent-1234" #AWS S3 bucket for transcription inputs
+
+# -----------------------------
+# Factory function
+# -----------------------------
+def get_audio_processor(region: str = "eu-north-1", s3_bucket: str = "voice-agent-1234", debug_mode: bool = False) -> AudioProcessor:
+    return AudioProcessor(region=region, s3_bucket=s3_bucket, debug_mode=debug_mode)
